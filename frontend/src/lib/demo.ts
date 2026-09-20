@@ -7,6 +7,7 @@ import type {
   CopilotEvent,
   CopilotMessage,
   CustomAgentRead,
+  DeployRun,
   InviteResult,
   KnowledgeDocument,
   KnowledgeResponse,
@@ -42,25 +43,29 @@ let projects: Project[] = [
     id: 'p-1', name: 'CrossBorder AI', status: 'active',
     description: '1688 商品数据源 · 整店巡检闭环 · 环境变量巡检',
     color: '#D9A441', repo_url: 'https://github.com/Drir1203/crossborder-ai',
-    deploy_url: null, local_path: null, created_at: iso(38), updated_at: iso(0, 9),
+    deploy_url: null, local_path: null, deploy_workflow: null, can_deploy: false,
+    created_at: iso(38), updated_at: iso(0, 9),
   },
   {
     id: 'p-2', name: 'i面试 · AI 教练', status: 'active',
     description: 'AI 面试教练 · 押题 · 闭环 · 成长报告 · 简历解析',
     color: '#E8C078', repo_url: 'https://github.com/Drir1203/interview-coach',
-    deploy_url: null, local_path: null, created_at: iso(30), updated_at: iso(1),
+    deploy_url: null, local_path: null, deploy_workflow: null, can_deploy: false,
+    created_at: iso(30), updated_at: iso(1),
   },
   {
     id: 'p-3', name: '雅秩 平台', status: 'planning',
     description: '工作流平台 · 黑金旗舰主题 · Web/小程序/App',
     color: '#A9762B', repo_url: 'https://github.com/Drir1203/ai-workflow-platform',
     deploy_url: 'https://veyawork.work', local_path: 'D:\\Project\\ai-workflow-platform',
+    deploy_workflow: null, can_deploy: false,
     created_at: iso(2), updated_at: iso(0, 8),
   },
   {
     id: 'p-4', name: '日常工作', status: 'active',
     description: '周报、待办、灵感速记、AI 内容整理',
     color: '#8FA8C0', repo_url: null, deploy_url: null, local_path: null,
+    deploy_workflow: null, can_deploy: false,
     created_at: iso(60), updated_at: iso(0, 7),
   },
 ]
@@ -355,17 +360,44 @@ export const demoApi = {
     await delay()
     return [...projects]
   },
-  async createProject(p: { name: string; description?: string; repo_url?: string; deploy_url?: string; local_path?: string }): Promise<Project> {
+  async createProject(p: { name: string; description?: string; repo_url?: string; deploy_url?: string; local_path?: string; deploy_workflow?: string }): Promise<Project> {
     await delay()
     const now = new Date().toISOString()
     const proj: Project = {
       id: `p-${++tid}`, name: p.name, description: p.description ?? null,
       status: 'active', color: '#D9A441',
       repo_url: p.repo_url ?? null, deploy_url: p.deploy_url ?? null, local_path: p.local_path ?? null,
+      deploy_workflow: p.deploy_workflow ?? null,
+      // 演示模式没有服务端、没有 token，部署能力整体不存在，故恒为 false
+      can_deploy: false,
       created_at: now, updated_at: now,
     }
     projects = [proj, ...projects]
     return proj
+  },
+  async updateProject(id: string, patch: Partial<{ name: string; description: string | null; repo_url: string | null; deploy_url: string | null; local_path: string | null; deploy_workflow: string | null }>): Promise<Project> {
+    await delay()
+    const before = projects.find((p) => p.id === id)
+    if (!before) throw new Error('项目不存在')
+    // 不原地改对象：新建一份再整体替换，避免调用方拿到的旧引用被悄悄改掉
+    const after: Project = { ...before, ...patch, can_deploy: false, updated_at: new Date().toISOString() }
+    projects = projects.map((p) => (p.id === id ? after : p))
+    return after
+  },
+
+  // ---------- 远程部署 ----------
+  // 演示模式无服务端，下列方法只为满足 DataLayer 契约而存在。
+  // 所有演示项目的 can_deploy 都是 false，界面不会给出入口；
+  // 一旦真被调用到，说明有地方漏判了 can_deploy —— 直接抛错把它暴露出来，
+  // 而不是假装部署成功（那会让演示看起来在工作，实际什么都没发生）。
+  async deployProject(_projectId: string): Promise<DeployRun> {
+    throw new Error('演示模式不支持部署')
+  },
+  async listDeployments(_projectId: string, _limit = 10): Promise<DeployRun[]> {
+    return []
+  },
+  async getDeployment(_projectId: string, _runId: string): Promise<DeployRun> {
+    throw new Error('演示模式不支持部署')
   },
   async deleteProject(id: string): Promise<void> {
     await delay()

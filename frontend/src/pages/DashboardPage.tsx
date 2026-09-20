@@ -5,6 +5,7 @@ import { Card } from '../components/ui/card'
 import { Dialog } from '../components/ui/dialog'
 import { Empty } from '../components/ui/empty'
 import { Input, Textarea } from '../components/ui/input'
+import type { DataLayer } from '../lib/view'
 import type { Note, Project, Task } from '../types'
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -23,21 +24,33 @@ export function DashboardPage({
   projects,
   tasks,
   notes,
+  layer,
+  canConfigure,
   onOpenProject,
   onCreateProject,
+  onConfigureDeploy,
 }: {
   projects: Project[]
   tasks: Task[]
   notes: Note[]
+  layer: DataLayer
+  /** 当前用户是 owner：能新建项目、能改部署配置 */
+  canConfigure: boolean
   onOpenProject: (id: string) => void
-  onCreateProject: (name: string, description?: string, repoUrl?: string, deployUrl?: string) => Promise<void>
+  onCreateProject: (name: string, description?: string, repoUrl?: string, deployUrl?: string, deployWorkflow?: string) => Promise<void>
+  onConfigureDeploy: (projectId: string, deployWorkflow: string | null) => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [deployUrl, setDeployUrl] = useState('')
+  const [deployWorkflow, setDeployWorkflow] = useState('')
   const [busy, setBusy] = useState(false)
+  // 部署配置弹窗：正在配置哪个项目（null = 关闭）
+  const [configuring, setConfiguring] = useState<Project | null>(null)
+  const [configWorkflow, setConfigWorkflow] = useState('')
+  const [configError, setConfigError] = useState('')
 
   const stats = useMemo(() => {
     const total = tasks.length
@@ -60,14 +73,39 @@ export function DashboardPage({
     if (!name.trim() || busy) return
     setBusy(true)
     try {
-      await onCreateProject(name.trim(), description.trim() || undefined, repoUrl.trim() || undefined, deployUrl.trim() || undefined)
+      await onCreateProject(
+        name.trim(),
+        description.trim() || undefined,
+        repoUrl.trim() || undefined,
+        deployUrl.trim() || undefined,
+        deployWorkflow.trim() || undefined,
+      )
       setOpen(false)
       setName('')
       setDescription('')
       setRepoUrl('')
       setDeployUrl('')
+      setDeployWorkflow('')
     } finally {
       setBusy(false)
+    }
+  }
+
+  function openConfigure(p: Project) {
+    setConfiguring(p)
+    setConfigWorkflow(p.deploy_workflow ?? '')
+    setConfigError('')
+  }
+
+  async function saveConfigure(clear: boolean) {
+    if (!configuring) return
+    setConfigError('')
+    try {
+      // 传 null = 关闭该项目的远程部署（按钮回到「配置部署」）
+      await onConfigureDeploy(configuring.id, clear ? null : configWorkflow.trim() || null)
+      setConfiguring(null)
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : '保存失败')
     }
   }
 
@@ -118,7 +156,10 @@ export function DashboardPage({
                   project={p}
                   tasks={tasks.filter((t) => t.project_id === p.id)}
                   notes={notes.filter((n) => n.project_id === p.id)}
+                  layer={layer}
+                  canConfigure={canConfigure}
                   onOpen={() => onOpenProject(p.id)}
+                  onConfigureDeploy={() => openConfigure(p)}
                 />
               </div>
             ))}
@@ -141,12 +182,54 @@ export function DashboardPage({
             <Input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/…" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-[12px] text-ink-3">部署地址（可选）</label>
-            <Input value={deployUrl} onChange={(e) => setDeployUrl(e.target.value)} placeholder="https://… 线上地址" />
+            <label className="text-[12px] text-ink-3">线上地址（可选）</label>
+            <Input value={deployUrl} onChange={(e) => setDeployUrl(e.target.value)} placeholder="https://… 已部署的站点" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] text-ink-3">部署 workflow（可选）</label>
+            <Input value={deployWorkflow} onChange={(e) => setDeployWorkflow(e.target.value)} placeholder="deploy.yml" />
+            <span className="text-[11px] text-ink-5">
+              仓库里 .github/workflows/ 下的文件名。填了才会出现「部署」按钮，且该 workflow 必须声明 workflow_dispatch。
+            </span>
           </div>
           <Button onClick={submit} loading={busy} disabled={!name.trim()}>
             创建
           </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={configuring !== null} onClose={() => setConfiguring(null)} title="部署配置">
+        <div className="flex flex-col gap-4">
+          <div className="text-[12px] text-ink-3">
+            项目：<span className="text-ink">{configuring?.name}</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] text-ink-3">部署 workflow 文件名</label>
+            <Input
+              value={configWorkflow}
+              onChange={(e) => setConfigWorkflow(e.target.value)}
+              placeholder="deploy.yml"
+              autoFocus
+            />
+            <span className="text-[11px] text-ink-5">
+              如 deploy.yml。必须是仓库 .github/workflows/ 下真实存在的文件，且声明了 workflow_dispatch，
+              否则触发时 GitHub 会返回 422。
+            </span>
+          </div>
+          {configError && <div className="text-[11.5px] text-error">{configError}</div>}
+          <div className="flex items-center gap-2">
+            <Button onClick={() => saveConfigure(false)} disabled={!configWorkflow.trim()}>
+              保存
+            </Button>
+            {configuring?.deploy_workflow && (
+              <Button variant="danger" onClick={() => saveConfigure(true)}>
+                关闭远程部署
+              </Button>
+            )}
+            <Button variant="ghost" onClick={() => setConfiguring(null)}>
+              取消
+            </Button>
+          </div>
         </div>
       </Dialog>
     </div>

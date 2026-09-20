@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # 访客体验入口（POST /api/auth/guest）：免注册进入共享演示租户。
     # 公开部署上这是一个对匿名访客开放的门，不需要时置 false 关掉。
     guest_access_enabled: bool = True
+    # 远程触发 GitHub Actions 部署（POST /api/projects/{id}/deploy）
+    # 留空 = 功能整体关闭，端点返回 503，前端不显示「部署」按钮。
+    # 这个 token 能触发本组织下仓库的 workflow，务必用 fine-grained PAT
+    # 且只勾 Actions:write、只授权需要部署的仓库 —— 不要用全权限经典 PAT。
+    github_deploy_token: str = ""
+    # GitHub API 基址。独立成配置项是为了测试能指向 mock server。
+    github_api_base: str = "https://api.github.com"
     # 微信小程序订阅消息（R16）
     wechat_appid: str = ""
     wechat_secret: str = ""

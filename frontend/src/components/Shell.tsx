@@ -58,8 +58,18 @@ export function Shell({
   }, [refresh])
 
   const handlers = {
-    createProject: async (name: string, description?: string, repoUrl?: string, deployUrl?: string) => {
-      await layer.createProject({ name, description, repo_url: repoUrl || undefined, deploy_url: deployUrl || undefined })
+    createProject: async (name: string, description?: string, repoUrl?: string, deployUrl?: string, deployWorkflow?: string) => {
+      await layer.createProject({
+        name,
+        description,
+        repo_url: repoUrl || undefined,
+        deploy_url: deployUrl || undefined,
+        deploy_workflow: deployWorkflow || undefined,
+      })
+      await refresh()
+    },
+    configureDeploy: async (id: string, deployWorkflow: string | null) => {
+      await layer.updateProject(id, { deploy_workflow: deployWorkflow })
       await refresh()
     },
     deleteProject: async (id: string) => {
@@ -133,8 +143,12 @@ export function Shell({
               projects={projects}
               tasks={tasks}
               notes={notes}
+              layer={layer}
+              // 演示模式没有 user（user 恒为 null），也就没有配置部署的入口
+              canConfigure={user?.role === 'owner'}
               onOpenProject={(id) => setView({ name: 'project', id })}
               onCreateProject={handlers.createProject}
+              onConfigureDeploy={handlers.configureDeploy}
             />
           ) : view.name === 'agents' ? (
             <AgentsPage layer={layer} projects={projects} />

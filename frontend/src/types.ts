@@ -7,6 +7,24 @@ export interface Project {
   repo_url: string | null
   deploy_url: string | null
   local_path: string | null
+  /** 要远程触发的 GitHub Actions workflow 文件名；null = 该项目不可部署 */
+  deploy_workflow: string | null
+  /** 服务端计算：当前用户此刻能否触发部署（取决于角色 + 服务器是否配了 token） */
+  can_deploy: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** 一次远程部署记录（对应 GitHub Actions 的一次 workflow run） */
+export interface DeployRun {
+  id: string
+  project_id: string
+  status: string
+  workflow: string
+  repo_full_name: string
+  github_run_id: string | null
+  run_url: string | null
+  error: string | null
   created_at: string
   updated_at: string
 }

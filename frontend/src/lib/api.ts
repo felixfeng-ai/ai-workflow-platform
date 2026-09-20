@@ -6,6 +6,7 @@ import type {
   CopilotEvent,
   CopilotMessage,
   CustomAgentRead,
+  DeployRun,
   Doc,
   InviteResult,
   KnowledgeDocument,
@@ -140,9 +141,20 @@ export const api = {
     request<TeamMember>('PATCH', `/api/team/members/${userId}`, { role }),
   removeMember: (userId: string) => request<void>('DELETE', `/api/team/members/${userId}`),
   listProjects: () => request<Project[]>('GET', '/api/projects'),
-  createProject: (p: { name: string; description?: string; repo_url?: string; deploy_url?: string; local_path?: string }) =>
+  createProject: (p: { name: string; description?: string; repo_url?: string; deploy_url?: string; local_path?: string; deploy_workflow?: string }) =>
     request<Project>('POST', '/api/projects', p),
+  /** 局部更新：只传要改的字段。deploy_workflow 传 null = 关闭该项目的远程部署。 */
+  updateProject: (id: string, patch: Partial<{ name: string; description: string | null; repo_url: string | null; deploy_url: string | null; local_path: string | null; deploy_workflow: string | null }>) =>
+    request<Project>('PATCH', `/api/projects/${id}`, patch),
   deleteProject: (id: string) => request<void>('DELETE', `/api/projects/${id}`),
+  // 远程部署：触发 GitHub Actions。202 = 已受理，不代表部署成功，
+  // 需轮询 getDeployment 拿实时状态。仅 owner 可用（member 会 403）。
+  deployProject: (projectId: string) =>
+    request<DeployRun>('POST', `/api/projects/${projectId}/deploy`),
+  listDeployments: (projectId: string, limit = 10) =>
+    request<DeployRun[]>('GET', `/api/projects/${projectId}/deployments?limit=${limit}`),
+  getDeployment: (projectId: string, runId: string) =>
+    request<DeployRun>('GET', `/api/projects/${projectId}/deployments/${runId}`),
   listTasks: (projectId?: string) =>
     request<Task[]>('GET', `/api/tasks${projectId ? `?project_id=${projectId}` : ''}`),
   createTask: (t: { project_id: string; title: string; priority?: string; description?: string; status?: string }) =>
