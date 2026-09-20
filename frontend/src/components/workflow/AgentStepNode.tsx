@@ -17,7 +17,10 @@ const AgentStepNodeInner = ({ id, data, selected }: NodeProps<FlowNode>) => {
       style={{
         width: NODE_W,
         height: NODE_H,
-        borderColor: selected ? 'var(--color-gold-primary, #d9a441)' : 'var(--color-line-soft, #2a2a2a)',
+        // 用真实的主题 token（--gold-primary / --border-soft，值形如 "217 164 65"，
+        // 需经 rgb() 包装）。这两个变量名必须写对：写成不存在的名字不会报错，
+        // 只会静默走 fallback 字面色，从而在非默认主题下显示错误颜色
+        borderColor: selected ? 'rgb(var(--gold-primary))' : 'rgb(var(--border-soft))',
         boxShadow: selected ? '0 0 0 2px rgba(217,164,65,.35), 0 4px 16px rgba(0,0,0,.35)' : undefined,
       }}
     >

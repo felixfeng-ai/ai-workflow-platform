@@ -177,3 +177,36 @@ body {
 .md-body-compact th,
 .md-body-compact td { padding: .35em .55em; }
 .md-body-compact hr { margin: .9em 0; }
+
+/* ===== React Flow 画布跟随应用主题 =====
+   xyflow 的内置配色是浅色的：MiniMap 白底（--xy-minimap-background-color-default: #fff）、
+   Controls 按钮 #fefefe。在深色主题下这两块就是画布上突兀的白色遮挡。
+   它自带的深色变量挂在 `.react-flow.dark` 下，需要传 colorMode="dark" 才生效 ——
+   但本项目主题由 html[data-theme] 驱动，且有亮色主题（aurora），写死 dark 会让
+   亮色主题下画布反而变黑。所以这里把 xyflow 的变量绑到项目 token 上，
+   画布就跟着当前主题走。
+
+   选择器把 .react-flow 写两遍是刻意提高特指度：xyflow 的 style.css 由组件
+   import，打包顺序上晚于本文件，同特指度会被它覆盖。 */
+.react-flow.react-flow {
+  --xy-minimap-background-color: rgb(var(--bg-elev-2));
+  --xy-minimap-mask-background-color: rgb(var(--bg) / 0.65);
+  --xy-minimap-node-background-color: rgb(var(--border-strong));
+  --xy-controls-button-background-color: rgb(var(--bg-elev-2));
+  --xy-controls-button-background-color-hover: rgb(var(--bg-active));
+  --xy-controls-button-color: rgb(var(--ink-3));
+  --xy-controls-button-color-hover: rgb(var(--ink));
+  --xy-controls-button-border-color: rgb(var(--border));
+  --xy-edge-stroke: rgb(var(--border-strong));
+  --xy-edge-stroke-selected: rgb(var(--gold-primary));
+  --xy-connectionline-stroke: rgb(var(--gold-primary));
+  --xy-background-pattern-color: rgb(var(--ink-5));
+}
+
+/* MiniMap / Controls 容器本身的圆角与描边，让它像画布的一部分而非贴上去的浮层 */
+.react-flow__minimap,
+.react-flow__controls {
+  border: 1px solid rgb(var(--border));
+  border-radius: 8px;
+  overflow: hidden;
+}
