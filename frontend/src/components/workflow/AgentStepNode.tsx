@@ -43,10 +43,12 @@ const AgentStepNodeInner = ({ id, data, selected }: NodeProps<FlowNode>) => {
               e.stopPropagation()
               data.onDelete?.(id)
             }}
-            className="ml-auto flex h-5 w-5 items-center justify-center rounded text-ink-4 transition-colors hover:bg-error/10 hover:text-error"
-            title="删除步骤"
+            /* nodrag：不加的话按下这个按钮会同时触发节点拖拽，点删除时节点会跟着飘 */
+            className="nodrag ml-auto flex h-6 w-6 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-error/15 hover:text-error"
+            title="删除步骤（也可选中节点后按 Delete）"
+            aria-label="删除步骤"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
             </svg>
           </button>

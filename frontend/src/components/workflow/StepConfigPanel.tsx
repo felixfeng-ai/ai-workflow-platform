@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import { Button } from '../ui/button'
 import { Input, Textarea } from '../ui/input'
 import { summarizeParams, type FlowNode, type WorkflowNodeData } from '../../lib/workflowGraph'
@@ -16,6 +16,8 @@ interface StepConfigPanelProps {
   onPatch: (nodeId: string, patch: NodePatch) => void
   /** 保存为预置模板，由父级负责创建并刷新模板列表 */
   onSaveTemplate: (agentKey: string, name: string, params: Record<string, unknown>) => Promise<void>
+  /** 文本输入里按回车 = 这一步配置完成（焦点交还画布） */
+  onCommit?: () => void
 }
 
 /** 按 schema 默认值 + 已有 params 生成表单初始值（值一律字符串，提交时按类型转换） */
@@ -45,7 +47,15 @@ function collectParams(agent: AgentInfo, form: Record<string, string>): Record<s
 const selectCls =
   'h-9 w-full rounded-lg border border-line-soft bg-elev1 px-3 text-[13px] text-ink focus:border-gold-primary/60 focus:outline-none focus:ring-2 focus:ring-gold-primary/25'
 
-export function StepConfigPanel({ node, agents, projects, templates, onPatch, onSaveTemplate }: StepConfigPanelProps) {
+export function StepConfigPanel({
+  node,
+  agents,
+  projects,
+  templates,
+  onPatch,
+  onSaveTemplate,
+  onCommit,
+}: StepConfigPanelProps) {
   const agent = agents.find((a) => a.key === node?.data.agent_key)
   // 参数摘要 label 化：参数 key → 中文名、项目 id → 项目名，让节点卡片对用户可读
   const paramLabels = agent ? Object.fromEntries(agent.param_schema.map((p) => [p.name, p.label])) : undefined
@@ -114,8 +124,20 @@ export function StepConfigPanel({ node, agents, projects, templates, onPatch, on
 
   const agentTemplates = agent ? templates.filter((t) => t.agent_key === agent.key) : []
 
+  /**
+   * 回车 = 这一步配置完成，焦点交还画布。
+   * 不需要「提交」动作：每个字段 onChange 时已经把值写回节点了，回车只是收工。
+   * 只拦 <input> —— textarea 里回车是换行、select 里回车是展开原生下拉，抢了就是 bug。
+   */
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || !onCommit) return
+    if ((e.target as HTMLElement).tagName !== 'INPUT') return
+    e.preventDefault()
+    onCommit()
+  }
+
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-4 p-4" onKeyDown={handleKeyDown}>
       <div className="flex flex-col gap-1.5">
         <label className="text-[12px] text-ink-3">步骤名</label>
         <Input

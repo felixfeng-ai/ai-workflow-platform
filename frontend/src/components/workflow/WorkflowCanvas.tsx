@@ -63,6 +63,46 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const { screenToFlowPosition } = useReactFlow()
   const initRef = useRef(false)
+  /** 画布外框：右侧面板回车「完成」后把焦点交还这里，键盘链路才能接着走 */
+  const canvasBoxRef = useRef<HTMLDivElement>(null)
+  /** 右侧配置面板容器：回车进入编辑时用来定位第一个输入框 */
+  const configPanelRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * 删除节点：删边；若为中间节点，前驱→后继自动重连保持链条。
+   *
+   * 键盘删除与节点上的 × 都走这里，React Flow 内建的删除键则被显式关掉
+   * （见下方 deleteKeyCode）—— 内建删除只把节点和它的边一起拿掉，不会重连，
+   * 链条会断成两截，要到保存时才报「存在多个起点」，用户看不懂也修不回来。
+   */
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((ns) => ns.filter((n) => n.id !== nodeId))
+      setEdges((eds) => {
+        const inE = eds.find((e) => e.target === nodeId)
+        const outE = eds.find((e) => e.source === nodeId)
+        const rest = eds.filter((e) => e.source !== nodeId && e.target !== nodeId)
+        if (inE && outE) rest.push({ id: `e-${newNodeId()}`, source: inE.source, target: outE.target })
+        return rest
+      })
+      setSelectedId((s) => (s === nodeId ? null : s))
+    },
+    [setNodes, setEdges],
+  )
+
+  /**
+   * 选中节点：selectedId（右侧面板看它）与 React Flow 的 selected 标记（画布高亮）
+   * 必须一起改。只改前者的话画布上没有高亮环，用户看不出 Delete / 回车会作用在哪个节点上。
+   */
+  const selectNode = useCallback(
+    (nodeId: string | null) => {
+      setSelectedId(nodeId)
+      setNodes((ns) =>
+        ns.map((n) => (n.selected === (n.id === nodeId) ? n : { ...n, selected: n.id === nodeId })),
+      )
+    },
+    [setNodes],
+  )
 
   // 参数摘要 label 化：key→中文参数名、项目 id→项目名，让节点卡片对非技术用户可读
   const summarizeNode = useCallback(
@@ -80,9 +120,9 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
     if (initRef.current) return
     initRef.current = true
     const { nodes: n, edges: e } = stepsToGraph(initialSteps)
-    setNodes(n.map((x) => ({ ...x, data: { ...x.data, paramsSummary: summarizeNode(x) } })))
+    setNodes(withHandlers(n))
     setEdges(e)
-    setSelectedId(n[0]?.id ?? null)
+    selectNode(n[0]?.id ?? null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -120,20 +160,19 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
     [setNodes],
   )
 
-  /** 删除节点：删边；若为中间节点，前驱→后继自动重连保持链条 */
-  const deleteNode = useCallback(
-    (nodeId: string) => {
-      setNodes((ns) => ns.filter((n) => n.id !== nodeId))
-      setEdges((eds) => {
-        const inE = eds.find((e) => e.target === nodeId)
-        const outE = eds.find((e) => e.source === nodeId)
-        const rest = eds.filter((e) => e.source !== nodeId && e.target !== nodeId)
-        if (inE && outE) rest.push({ id: `e-${newNodeId()}`, source: inE.source, target: outE.target })
-        return rest
-      })
-      setSelectedId((s) => (s === nodeId ? null : s))
-    },
-    [setNodes, setEdges],
+  /**
+   * 给 stepsToGraph 产出的节点补上交互回调。
+   * stepsToGraph 只负责「数据 → 图」，不碰回调 —— 于是编辑旧工作流时（走的是
+   * stepsToGraph）节点上没有 onDelete，× 点了没反应。这里统一补齐，
+   * 新增节点、模板重建、编辑旧数据三条路径才不会各走各的。
+   */
+  const withHandlers = useCallback(
+    (ns: FlowNode[]) =>
+      ns.map((n) => ({
+        ...n,
+        data: { ...n.data, paramsSummary: summarizeNode(n), onDelete: deleteNode, onSelect: selectNode },
+      })),
+    [summarizeNode, deleteNode, selectNode],
   )
 
   /** 追加节点：接到链尾，或落在指定坐标（拖拽落点） */
@@ -157,15 +196,15 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
           agentName: agent?.name ?? agentKey,
           paramsSummary: '',
           onDelete: deleteNode,
-          onSelect: setSelectedId,
+          onSelect: selectNode,
         },
       }
-      setNodes((ns) => [...ns, node])
+      setNodes((ns) => [...ns.map((n) => (n.selected ? { ...n, selected: false } : n)), node])
       const tail = chainTail(nodes, edges)
       if (tail) setEdges((eds) => [...eds, { id: `e-${newNodeId()}`, source: tail.id, target: id }])
-      setSelectedId(id)
+      selectNode(id)
     },
-    [agents, nodes, edges, setNodes, setEdges, deleteNode],
+    [agents, nodes, edges, setNodes, setEdges, deleteNode, selectNode],
   )
 
   const onConnect = useCallback(
@@ -198,11 +237,46 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
     linearize: () => graphToSteps(nodes, edges),
     loadSteps: (steps: WorkflowStep[]) => {
       const { nodes: n, edges: e } = stepsToGraph(steps)
-      setNodes(n.map((x) => ({ ...x, data: { ...x.data, paramsSummary: summarizeNode(x) } })))
+      setNodes(withHandlers(n))
       setEdges(e)
-      setSelectedId(n[0]?.id ?? null)
+      selectNode(n[0]?.id ?? null)
     },
-  }), [nodes, edges, summarizeNode])
+  }), [nodes, edges, withHandlers, selectNode])
+
+  /** 回车进入编辑：焦点送进右侧面板的第一个输入框 */
+  const focusConfigPanel = useCallback(() => {
+    configPanelRef.current?.querySelector<HTMLElement>('input, select, textarea')?.focus()
+  }, [])
+
+  /** 面板里回车「完成」后交还焦点，Delete / 继续选节点才不会因为焦点在面板里而失效 */
+  const focusCanvas = useCallback(() => canvasBoxRef.current?.focus(), [])
+
+  /**
+   * 画布快捷键：Delete/退格删除选中节点，回车进入该节点配置。
+   *
+   * 挂在 document 上而不是画布容器的 onKeyDown：点击节点后焦点落在节点自身的
+   * div 上，事件压根不会走到画布容器的处理函数，挂容器收不到。
+   * 代价是必须自己放行输入态 —— 否则在右侧面板里改参数按退格，会把整个节点删掉。
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // 已处理的（如弹窗的 Esc）不重复响应；带修饰键的组合留给浏览器/系统
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
+      // 输入态或可交互控件：退格是删字符、回车是触发控件，都不能抢
+      const t = e.target as HTMLElement | null
+      if (t?.closest('input, textarea, select, button, a, [contenteditable="true"]')) return
+      if (!selectedId) return
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        deleteNode(selectedId)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        focusConfigPanel()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [selectedId, deleteNode, focusConfigPanel])
 
   const selectedNode = nodes.find((n) => n.id === selectedId) ?? null
 
@@ -233,7 +307,9 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
 
       {/* 中间画布 */}
       <div
-        className="relative min-w-0 flex-1 rounded-lg border border-line-soft bg-elev1"
+        ref={canvasBoxRef}
+        tabIndex={-1}
+        className="relative min-w-0 flex-1 rounded-lg border border-line-soft bg-elev1 outline-none"
         onDrop={(e) => {
           e.preventDefault()
           const key = e.dataTransfer.getData('application/reactflow')
@@ -253,9 +329,11 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onNodeClick={(_, n) => setSelectedId(n.id)}
-            onPaneClick={() => setSelectedId(null)}
+            onNodeClick={(_, n) => selectNode(n.id)}
+            onPaneClick={() => selectNode(null)}
             nodeTypes={nodeTypes}
+            // 内建删除键关掉，改由上面的 deleteNode 接管：内建的不会重连前后节点
+            deleteKeyCode={null}
             fitView
             minZoom={0.3}
             proOptions={{ hideAttribution: true }}
@@ -296,7 +374,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
       </div>
 
       {/* 右侧配置面板 */}
-      <div className="w-72 shrink-0 overflow-y-auto rounded-lg border border-line-soft bg-elev1">
+      <div ref={configPanelRef} className="w-72 shrink-0 overflow-y-auto rounded-lg border border-line-soft bg-elev1">
         <StepConfigPanel
           node={selectedNode}
           agents={agents}
@@ -304,6 +382,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps
           templates={templates}
           onPatch={patchNode}
           onSaveTemplate={onSaveTemplate}
+          onCommit={focusCanvas}
         />
       </div>
     </div>
