@@ -25,7 +25,7 @@
 - **工作台** —— 项目看板、任务看板（待办/进行中/已完成）、Markdown 笔记
 - **AI 副驾** —— SSE 流式对话，可挂载项目上下文，逐字返回
 - **多智能体** —— 4 个内置智能体（周报 / 巡检报告 / 面试题 / 竞品调研）+ 自定义智能体（自写 Prompt、可挂工具）
-- **工作流编排** —— 可视化画布拖拽排序，顺序执行、失败即止、运行记录可回看
+- **工作流编排** —— 可视化画布连线编排，支持条件分支与并行执行，失败即止、可断点续跑、运行记录可回看
 - **知识库 RAG** —— 上传 PDF / DOCX / Markdown，检索后问答并标注引用来源
 - **AI 写作** —— 长文分段生成，产出统一走 Markdown 渲染
 - **协作与通知** —— 多租户隔离、团队邀请与角色管理、站内通知中心、到期提醒（微信订阅消息）
@@ -93,7 +93,8 @@ backend/                 FastAPI 服务
   app/api/               路由层：projects / tasks / notes / agents / workflows / ai / knowledge / ...
   app/services/          业务层：guest 访客租户、notification、scheduler、rag ...
   app/agents/            智能体：base + registry + 4 个内置实现 + custom 自定义
-  app/workflows/         工作流执行器（顺序跑步骤、模板插值、运行记录）
+  app/workflows/         工作流执行器（LangGraph 图编排、条件分支、模板插值、运行记录）
+  app/llm/               LangGraph 接缝（AiEngine→BaseChatModel 门面、SQLAlchemy Checkpointer）
   app/ai/                AI 引擎适配层（dify / openai_compatible 统一接口）
   alembic/               数据库迁移（建表的唯一来源）
   tests/                 21 个测试文件 / 191 个用例

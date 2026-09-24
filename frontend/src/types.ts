@@ -174,22 +174,57 @@ export interface Schedule {
   interval_minutes: number | null
 }
 
+/**
+ * 连线条件（结构化 DSL，后端 op 白名单校验，不做表达式求值）。
+ * `of` 只被 all / any / not 使用：all/any 收数组，not 收单个子条件。
+ */
+export interface WorkflowCondition {
+  op: string
+  left?: string
+  right?: unknown
+  of?: WorkflowCondition | WorkflowCondition[]
+}
+
+/** 画布连线。when 为空 = 无条件成立（无条件出边有多条即并行扇出）。 */
+export interface WorkflowEdge {
+  source: string
+  target: string
+  when?: WorkflowCondition | null
+}
+
 export interface Workflow {
   id: string
   user_id: string
   name: string
   description: string | null
   steps: WorkflowStep[]
+  /** null = 线性：由后端按 steps 顺序自动连成一条链（存量工作流即此形态） */
+  edges: WorkflowEdge[] | null
   schedule: Schedule | null
   enabled: boolean
   created_at: string
   updated_at: string
 }
 
+/**
+ * AI 起草结果：形状对齐 WorkflowCreate，可直接 loadSteps 进画布。
+ * rationale 是「AI 为什么这么拆」的一句话，只在起草成功后展示一次，不随工作流保存。
+ */
+export interface WorkflowDraft {
+  name: string
+  description: string
+  rationale: string
+  steps: WorkflowStep[]
+  /** null = 线性（多数情况）；有分支时后端已算好每条边 */
+  edges: WorkflowEdge[] | null
+}
+
 export interface WorkflowRunResult {
   label: string
   agent_key: string
   output: string
+  /** 对应 steps[].node_id：分支结构下按它把结果对回画布节点，而非靠顺序猜 */
+  node_id: string | null
 }
 
 export interface WorkflowRun {
@@ -201,6 +236,8 @@ export interface WorkflowRun {
   triggered_by: 'manual' | 'scheduled'
   started_at: string | null
   finished_at: string | null
+  /** 断点续跑的时刻；从未续跑为 null */
+  resumed_at: string | null
   created_at: string
 }
 

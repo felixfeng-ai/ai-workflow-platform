@@ -24,6 +24,8 @@ import type {
   UnreadCount,
   User,
   Workflow,
+  WorkflowDraft,
+  WorkflowEdge,
   WorkflowRun,
   WorkflowStep,
   WritingEvent,
@@ -211,13 +213,21 @@ export const api = {
     name: string
     description?: string
     steps: WorkflowStep[]
+    /** 分支连线；null/缺省 = 线性（后端按 steps 顺序自动连成链） */
+    edges?: WorkflowEdge[] | null
     schedule?: Schedule | null
   }) => request<Workflow>('POST', '/api/workflows', w),
   updateWorkflow: (id: string, patch: Partial<Workflow>) =>
     request<Workflow>('PATCH', `/api/workflows/${id}`, patch),
   deleteWorkflow: (id: string) => request<void>('DELETE', `/api/workflows/${id}`),
+  /** 一句话起草：只返回草稿，不落库（用户在画布上确认后才 createWorkflow） */
+  draftWorkflow: (intent: string) =>
+    request<WorkflowDraft>('POST', '/api/workflows/draft', { intent }),
   runWorkflow: (id: string) =>
     request<{ run_id: string; status: string }>('POST', `/api/workflows/${id}/run`),
+  /** 断点续跑：复用同一个 run，只重跑失败的那一步及其下游 */
+  resumeWorkflowRun: (runId: string) =>
+    request<{ run_id: string; status: string }>('POST', `/api/workflows/runs/${runId}/resume`),
   listWorkflowRuns: (opts?: { page?: number; page_size?: number }) => {
     const q = new URLSearchParams()
     q.set('page', String(opts?.page ?? 1))

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新建工作流 · 布局与极简化 方案预览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   页面壳（中性，不抢戏 —— 只有 stage 内是真的产品配色）
+   ============================================================ */
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;background:#f4f4f2;color:#1a1a1a}
+.bar{padding:18px 28px;border-bottom:1px solid #dcdcd8;background:#fff;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.bar h1{margin:0;font-size:16px;font-weight:700}
+.bar p{margin:5px 0 0;font-size:12.5px;color:#6b6b66;line-height:1.6;max-width:760px}
+.seg{display:inline-flex;border:1px solid #d0d0cc;border-radius:9px;overflow:hidden;background:#fff;flex:none}
+.seg button{border:0;background:transparent;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:#57574f}
+.seg button.on{background:#141412;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;padding:24px 28px 8px;max-width:1600px;margin:0 auto}
+@media(max-width:1180px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:#fff;border:2px solid #e4e4e0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.card.rec{border-color:#D9A441;box-shadow:0 0 0 1px #D9A441}
+/* 比例锁死成 stage 的 1440:860 —— 卡片多宽，stage 就缩放到多宽，不留黑边也不裁切 */
+.mock{aspect-ratio:1440/860;overflow:hidden;position:relative;background:#0C0C0B}
+/* stage 是 1440×860 的「真实视口」，缩放后塞进卡片。
+   position:relative 是给里面的全屏浮层（.scrim/.sheet/.ask/.run）当定位基准的 —— 它们
+   必须铺满整个 stage，而不是只铺满后排的 .main，否则一缩小就露馅。
+   必须用 absolute + left/top 50% + translate(-50%,-50%) 居中：1440px 比卡片宽，
+   用 grid/place-items 居中会让 grid 轨道撑到 1440px，缩放绕自身中心之后整个偏到右边被裁掉。 */
+/* color 必须落在 .stage 上：全屏浮层（.sheet/.ask/.run）是 .stage 的直接子元素，
+   不在 .app 里，继承不到 .app 的浅色字，会掉回 body 的深色字 —— 暗底黑字等于看不见。 */
+.stage{position:absolute;left:50%;top:50%;width:1440px;height:860px;transform-origin:center center;color:#F0EDE6}
+.meta{padding:14px 18px 16px;display:flex;flex-direction:column;gap:10px}
+.meta-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.meta h3{margin:0;font-size:15.5px;font-weight:700;display:flex;align-items:center;gap:8px}
+.pill{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:#f0ede4;color:#8a6d20;border:1px solid #e6dcc2;white-space:nowrap}
+.pill.warn{background:#fdeeee;color:#b0403a;border-color:#f3d5d3}
+.meta .tag{font-size:11.5px;color:#8a8a84;white-space:nowrap}
+.meta .desc{font-size:12.5px;line-height:1.65;color:#4a4a44;margin:0}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;border-top:1px solid #ececea;padding-top:10px}
+.fact{font-size:11px;color:#8a8a84;line-height:1.5}
+.fact b{display:block;font-size:13.5px;font-weight:700;color:#1a1a1a;font-variant-numeric:tabular-nums;margin-bottom:1px}
+.fact b.g{color:#a8791a}
+.notes{max-width:1600px;margin:0 auto;padding:18px 28px 48px;display:grid;gap:12px}
+.notes h4{margin:8px 0 0;font-size:12px;letter-spacing:.06em;color:#8a8a84;text-transform:uppercase}
+.note{background:#fff;border:1px solid #e4e4e0;border-radius:12px;padding:14px 18px;font-size:13px;line-height:1.75;color:#2c2c29}
+.note b{font-weight:650}
+.note code{font-family:"JetBrains Mono",monospace;font-size:12px;background:#f2f2ef;padding:1px 5px;border-radius:4px}
+.note ul{margin:6px 0 0;padding-left:18px}
+.note li{margin:3px 0}
+body.mode-entry .st-edit{display:none}
+body.mode-editor .st-entry{display:none}
+
+/* ============================================================
+   Stage 内部 —— 产品真实配色（取 frontend/index.html 的 :root 暗色 token）
+   bg #0C0C0B / elev1 #101010 / elev2 #141413 / active #1C1B18
+   line #232321 / line-soft #2A2A24 / ink #F0EDE6 / ink-3 #8B877E / gold #D9A441
+   ============================================================ */
+.stage{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.app{height:100%;background:#0C0C0B;color:#F0EDE6;display:flex;flex-direction:column;overflow:hidden}
+.app *{box-sizing:border-box}
+.topbar{height:56px;flex:none;border-bottom:1px solid #232321;background:#101010;display:flex;align-items:center;gap:12px;padding:0 20px}
+.logo{width:26px;height:26px;border-radius:7px;background:#141413;border:1px solid #2A2A24;display:grid;place-items:center;color:#D9A441;font-size:13px}
+.tb-t{font-size:12.5px;color:#C9C4B8;font-weight:500}
+.tb-sp{flex:1}
+.tb-u{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#E8C078,#A9762B);display:grid;place-items:center;font-size:10px;font-weight:700;color:#1A1406}
+.body{flex:1;min-height:0;display:flex}
+.rail{width:184px;flex:none;border-right:1px solid #232321;background:#101010;padding:12px;display:flex;flex-direction:column;gap:4px}
+.rail .grp{font-size:10px;letter-spacing:.08em;color:#5C5A52;padding:8px 8px 4px;text-transform:uppercase}
+.rail .it{font-size:12.5px;color:#8B877E;padding:7px 8px;border-radius:7px}
+.rail .it.on{background:#1C1B18;color:#F0EDE6;font-weight:600}
+.main{flex:1;min-width:0;overflow:hidden;padding:22px 26px;position:relative}
+.page-h{font-size:19px;font-weight:700;margin:0 0 3px}
+.page-s{font-size:12px;color:#8B877E;margin:0 0 18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font-size:12.5px;font-weight:600;padding:8px 14px;border:1px solid #2A2A24;background:#141413;color:#C9C4B8;font-family:inherit}
+.btn.gold{background:linear-gradient(180deg,#E8C078,#D9A441);color:#1A1406;border-color:#D9A441}
+.btn.lg{padding:11px 22px;font-size:13.5px;border-radius:10px}
+.btn.ghost{background:transparent}
+.wf-row{display:flex;align-items:center;gap:10px;border:1px solid #232321;background:#101010;border-radius:10px;padding:11px 14px;margin-bottom:8px}
+.wf-row .n{font-size:12.5px;font-weight:600}
+.wf-row .s{font-size:11px;color:#5C5A52;margin-top:2px}
+.dot{width:6px;height:6px;border-radius:50%;background:#7FD1A0;flex:none}
+
+/* --- 遮罩层：旧弹窗 vs 新全屏面板 --- */
+.scrim{position:absolute;inset:0;background:rgba(6,6,5,.66);backdrop-filter:blur(2px);display:grid;place-items:center;z-index:40}
+.dlg{width:1024px;max-width:1024px;background:linear-gradient(180deg,rgba(26,25,22,.92),rgba(18,18,16,.95));border:1px solid #2A2A24;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden}
+.dlg-h{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid #232321}
+.dlg-h .t{font-size:14px;font-weight:700}
+.dlg-h .x{color:#5C5A52;font-size:15px}
+.dlg-b{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+.sheet{position:absolute;inset:0;background:#0C0C0B;z-index:40;display:flex;flex-direction:column}
+
+/* --- 表单元件 --- */
+.lab{font-size:11px;color:#8B877E;margin-bottom:5px;display:block}
+.lab .req{color:#D9A441}
+.inp{border:1px solid #2A2A24;background:#0C0C0B;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#F0EDE6;min-height:34px;display:flex;align-items:center}
+.inp.ph{color:#5C5A52}
+.inp.area{align-items:flex-start;min-height:64px;line-height:1.6}
+.row{display:flex;gap:12px}.row>*{flex:1;min-width:0}
+.radio{display:flex;align-items:center;gap:6px;font-size:12px;color:#C9C4B8}
+.rd{width:13px;height:13px;border-radius:50%;border:1.5px solid #3a382f;flex:none}
+.rd.on{border-color:#D9A441;background:radial-gradient(circle,#D9A441 0 3.5px,transparent 3.5px)}
+.tpl{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tpl .t{border:1px solid #2A2A24;background:#101010;border-radius:9px;padding:9px 10px}
+.tpl .t .a{font-size:11.5px;font-weight:600}
+.tpl .t .b{font-size:10px;color:#5C5A52;margin-top:3px;line-height:1.4}
+
+/* --- 画布区 --- */
+.ed{height:100%;background:#0C0C0B;color:#F0EDE6;display:flex;flex-direction:column;overflow:hidden}
+.ed-h{height:56px;flex:none;border-bottom:1px solid #232321;background:#101010;display:flex;align-items:center;gap:12px;padding:0 16px}
+.back{font-size:12px;color:#8B877E;display:flex;align-items:center;gap:5px}
+.ed-name{font-size:13.5px;font-weight:650;border:1px solid transparent;border-radius:7px;padding:5px 9px}
+.ed-name.edit{border-color:#2A2A24;background:#0C0C0B}
+.ed-name .cur{display:inline-block;width:1.5px;height:14px;background:#D9A441;vertical-align:-2px;margin-left:1px}
+.draft{font-size:10px;padding:2px 7px;border-radius:999px;background:#2A2213;color:#E8C078;border:1px solid #4a3a1c}
+.ed-body{flex:1;min-height:0;display:flex;gap:8px;padding:8px}
+.pal{width:176px;flex:none;border:1px solid #2A2A24;background:#101010;border-radius:10px;padding:8px;overflow:hidden}
+.pal .h{font-size:11px;font-weight:600;color:#8B877E;padding:2px 4px}
+.pal .sub{font-size:10px;color:#5C5A52;padding:0 4px 8px;line-height:1.4}
+.pal .a{border:1px solid #2A2A24;background:#0C0C0B;border-radius:7px;padding:6px 8px;margin-bottom:5px}
+.pal .a .x{font-size:11.5px;font-weight:500}
+.pal .a .y{font-size:9.5px;color:#5C5A52;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cv{flex:1;min-width:0;position:relative;border:1px solid #2A2A24;background:#101010;border-radius:10px;overflow:hidden;
+    background-image:radial-gradient(#1e1e1b 1px,transparent 1px);background-size:20px 20px}
+.cfg{width:288px;flex:none;border:1px solid #2A2A24;background:#101010;border-radius:10px;padding:12px;overflow:hidden}
+.cfg .h{font-size:12px;font-weight:650;margin-bottom:9px}
+.cfg .f{margin-bottom:10px}
+.mini{position:absolute;right:10px;bottom:10px;width:118px;height:66px;border:1px solid #2A2A24;background:#0C0C0B;border-radius:7px;display:grid;place-items:center;font-size:9px;color:#3a382f}
+.ctrls{position:absolute;left:10px;bottom:10px;display:flex;flex-direction:column;border:1px solid #2A2A24;border-radius:7px;overflow:hidden;background:#0C0C0B}
+.ctrls span{width:24px;height:22px;display:grid;place-items:center;font-size:11px;color:#8B877E;border-bottom:1px solid #232321}
+
+/* --- 节点 --- */
+.nd{position:absolute;width:220px;height:96px;border:1px solid #2A2A24;background:#141413;border-radius:10px;padding:9px 11px}
+.nd.sel{border-color:#D9A441;box-shadow:0 0 0 1px #D9A441}
+.nd .idx{position:absolute;top:-8px;left:-9px;width:18px;height:18px;border-radius:50%;background:#D9A441;color:#1A1406;font-size:10.5px;font-weight:700;display:grid;place-items:center}
+.nd .del{position:absolute;top:-8px;right:-9px;width:18px;height:18px;border-radius:50%;background:#1C1B18;border:1px solid #2A2A24;color:#8B877E;font-size:11px;display:grid;place-items:center}
+.nd .t{font-size:12.5px;font-weight:650}
+.nd .s{font-size:10px;color:#5C5A52;margin-top:3px}
+.nd .ps{font-size:10px;color:#8B877E;border-top:1px solid #232321;margin-top:9px;padding-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nd .ps.gold{color:#C9A961}
+.port{position:absolute;width:8px;height:8px;border-radius:50%;background:#2A2A24;border:1px solid #3a382f;top:44px}
+.port.l{left:-5px}.port.r{right:-5px}
+.edge{position:absolute;height:2px;background:#3a382f;border-radius:2px}
+/* 箭头收在离目标节点 6px 处，不能顶到边框上 */
+.edge::after{content:"";position:absolute;right:6px;top:-3.5px;border-left:7px solid #3a382f;border-top:4.5px solid transparent;border-bottom:4.5px solid transparent}
+.edge-lab{position:absolute;font-size:9.5px;color:#E8C078;background:#1C1B18;border:1px solid #4a3a1c;border-radius:999px;padding:1.5px 7px;white-space:nowrap}
+.guide{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:392px;border:1px solid #2A2A24;background:rgba(12,12,11,.96);border-radius:12px;padding:18px 20px}
+.guide .gt{font-size:12.5px;font-weight:650}
+.guide .gi{font-size:11.5px;color:#8B877E;line-height:1.75;margin-top:9px;display:flex;gap:8px}
+.guide .gi b{color:#D9A441;font-weight:700}
+
+/* --- Demo B：意图输入 --- */
+.ask{position:absolute;inset:0;background:#0C0C0B;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:0 40px}
+.ask h2{margin:0;font-size:23px;font-weight:700;letter-spacing:-.01em}
+.ask .sub{margin:-14px 0 0;font-size:13px;color:#8B877E}
+.askbox{width:760px;border:1px solid #2A2A24;background:#101010;border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.askbox.focus{border-color:#D9A441;box-shadow:0 0 0 3px rgba(217,164,65,.10)}
+.askbox .q{font-size:14.5px;color:#F0EDE6;line-height:1.6;min-height:48px}
+.askbox .cur{display:inline-block;width:1.5px;height:16px;background:#D9A441;vertical-align:-3px}
+.askbox .bar2{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #232321;padding-top:11px}
+.askbox .hint{font-size:11px;color:#5C5A52}
+.chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:760px}
+.chip{font-size:11.5px;color:#8B877E;border:1px solid #2A2A24;background:#101010;border-radius:999px;padding:6px 13px}
+.alt{font-size:12px;color:#5C5A52;display:flex;align-items:center;gap:8px}
+.alt u{color:#8B877E;text-decoration:none;border-bottom:1px dashed #3a382f;padding-bottom:1px}
+
+/* --- Demo C：ReAct 运行 --- */
+.run{position:absolute;inset:0;background:#0C0C0B;z-index:40;display:flex;flex-direction:column;padding:0 0 0 0}
+.run-h{height:56px;flex:none;border-bottom:1px solid #232321;background:#101010;display:flex;align-items:center;padding:0 20px;gap:10px}
+.run-b{flex:1;min-height:0;display:flex;justify-content:center;padding:26px 0}
+.run-col{width:820px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.bub{border:1px solid #2A2A24;background:#101010;border-radius:12px;padding:13px 16px;font-size:13px;line-height:1.65;color:#C9C4B8}
+.bub.me{background:#141413;border-color:#2A2A24;color:#F0EDE6;align-self:flex-end;max-width:560px}
+.steps{display:flex;flex-direction:column;gap:0;border:1px solid #2A2A24;background:#101010;border-radius:12px;overflow:hidden}
+.stp{display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid #1c1c1a;align-items:flex-start}
+.stp:last-child{border-bottom:0}
+.stp .ic{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:10px;flex:none;margin-top:1px}
+.ic.ok{background:#12291d;color:#7FD1A0;border:1px solid #23543a}
+.ic.now{background:#2A2213;color:#E8C078;border:1px solid #4a3a1c}
+.ic.wait{background:#141413;color:#5C5A52;border:1px solid #2A2A24}
+.stp .m{flex:1;min-width:0}
+.stp .a{font-size:12.5px;font-weight:600}
+.stp .b{font-size:11px;color:#8B877E;margin-top:3px;line-height:1.6}
+.stp .b code{font-family:"JetBrains Mono",monospace;font-size:10.5px;background:#1C1B18;padding:1px 5px;border-radius:4px;color:#C9A961}
+.thought{font-size:11px;color:#5C5A52;font-style:italic;margin-top:4px}
+.composer{border:1px solid #2A2A24;background:#101010;border-radius:12px;padding:11px 14px;display:flex;align-items:center;gap:10px}
+.composer .ph{flex:1;font-size:13px;color:#5C5A52}
+
+/* --- Demo D：顶部内联元数据 --- */
+.ed-h.inner{gap:8px}
+.sepa{width:1px;height:20px;background:#232321}
+.iconblk{width:30px;height:30px;border:1px solid #2A2A24;background:#141413;border-radius:8px;display:grid;place-items:center;font-size:13px;color:#8B877E}
+.sched{font-size:11.5px;color:#8B877E;display:flex;align-items:center;gap:5px;border:1px solid #2A2A24;border-radius:7px;padding:5px 10px}
+.sched .k{color:#5C5A52}
+</style>
+</head>
+<body class="mode-entry">
+
+<div class="bar">
+  <div>
+    <h1>新建工作流 · 布局与极简化 — 4 个方案</h1>
+    <p>两件事一起改：<b>① 画布太小</b>（当前 1024px 弹窗里只剩 504px 画布，放不下第二个节点，创建按钮被顶到屏幕外）；<b>② 要填的太多</b>（当前必须填名称，另有描述、模板、定时共四组）。极简化的方向就是用户少决定，AI 多决定。</p>
+  </div>
+  <div class="seg">
+    <button id="b-entry" class="on" onclick="setMode('entry')">入口 · 点「新建工作流」之后</button>
+    <button id="b-editor" onclick="setMode('editor')">编辑器 · 真正干活时</button>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- ============ A 保守两步式 ============ -->
+  <div class="card">
+    <div class="mock"><div class="stage st-entry" id="A-entry"></div><div class="stage st-edit" id="A-edit"></div></div>
+    <div class="meta">
+      <div class="meta-row"><h3>方案 A · 两步式<span class="pill">最小改动</span></h3><span class="tag">风险最低</span></div>
+      <p class="desc">第一步只问名字（可留空自动命名），点「创建并编辑」后进入<b>全屏编辑器</b>。描述、模板、定时全部移到编辑器里再设。</p>
+      <div class="facts">
+        <div class="fact"><b>1 项</b>打开时必填</div>
+        <div class="fact"><b class="g">944px</b>画布宽度</div>
+        <div class="fact"><b>右上固定</b>主按钮位置</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ B 一句话起手 ============ -->
+  <div class="card rec">
+    <div class="mock"><div class="stage st-entry" id="B-entry"></div><div class="stage st-edit" id="B-edit"></div></div>
+    <div class="meta">
+      <div class="meta-row"><h3>方案 B · 一句话起手<span class="pill">推荐</span></h3><span class="tag">对应「AI 自主决策」</span></div>
+      <p class="desc">打开就是一个输入框：「你想让它做什么？」AI 据此起草<b>名字 + 步骤 + 参数 + 建议定时</b>，落到全屏画布上。用户是<b>审阅者</b>而不是填写者 —— 没有必填项，画布和手动编辑一样都在。</p>
+      <div class="facts">
+        <div class="fact"><b>0 项</b>打开时必填</div>
+        <div class="fact"><b class="g">944px</b>画布宽度</div>
+        <div class="fact"><b class="g">1 句</b>用户需决定的事</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ C 意图直跑 ============ -->
+  <div class="card">
+    <div class="mock"><div class="stage st-entry" id="C-entry"></div><div class="stage st-edit" id="C-edit"></div></div>
+    <div class="meta">
+      <div class="meta-row"><h3>方案 C · 意图直跑<span class="pill warn">最激进</span></h3><span class="tag">无画布</span></div>
+      <p class="desc">没有画布。用户描述目标，运行时由 LLM <b>逐步决定</b>调哪个助手、要不要再来一轮 —— 这就是 ReAct 循环。最接近「LLM 自主决策」，但<b>执行前看不到会跑什么</b>。</p>
+      <div class="facts">
+        <div class="fact"><b>0 项</b>打开时必填</div>
+        <div class="fact"><b>—</b>画布宽度</div>
+        <div class="fact"><b>不可预览</b>执行前</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ D 零弹窗画布优先 ============ -->
+  <div class="card">
+    <div class="mock"><div class="stage st-entry" id="D-entry"></div><div class="stage st-edit" id="D-edit"></div></div>
+    <div class="meta">
+      <div class="meta-row"><h3>方案 D · 零弹窗，直接进画布</h3><span class="tag">步骤最少</span></div>
+      <p class="desc">点「新建工作流」不再弹任何东西，直接落到全屏空白画布。元数据压成顶部一行<b>内联可编辑</b>：名字先显示「未命名工作流」，要改才点。定时收进一个「⏱ 定时」按钮。</p>
+      <div class="facts">
+        <div class="fact"><b>0 项</b>打开时必填</div>
+        <div class="fact"><b class="g">944px</b>画布宽度</div>
+        <div class="fact"><b class="g">0 次</b>弹窗打断</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <h4>为什么现在会这样 — 两个问题的根因</h4>
+  <div class="note">
+    <b>画布 504px 是算出来的，不是感觉。</b>弹窗 <code>max-w-5xl</code> = 1024px，减去 <code>p-5</code> 内边距、左侧助手栏 <code>w-44</code>（176px）、右侧配置栏 <code>w-72</code>（288px）、两处 <code>gap-2</code>（16px），剩 <b>504px</b>。一个节点占 276px（<code>NODE_W 220 + X_GAP 56</code>），所以<b>横向只放得下 1.8 个节点</b>。
+  </div>
+  <div class="note">
+    <b>创建按钮被顶出屏幕，是缺一行 <code>overflow-y-auto</code>。</b>弹窗容器是 <code>max-h-[80vh] flex flex-col</code>，但里面没有滚动，子元素（模板区、定时区）又不可压缩，于是内容<b>溢出</b>而不是<b>滚动</b> —— 底部的按钮就掉到视口外了。画布同时从声明的 <code>h-[50vh]</code>（423px）被挤到 <code>min-h-[360px]</code> 的地板。
+  </div>
+  <div class="note">
+    <b>根因是一个 IDE 被塞进了弹窗。</b>左侧助手栏 + 中间画布 + 右侧配置栏，本来就是编辑器级别的三栏，却和一个元数据表单共享 1024px。Dify / Coze / n8n / Langflow 全用两步：<b>小弹窗只问元数据 → 全屏编辑器干活</b>。四条规则里当前违反了三条：元数据没有和画布分开 / 画布没有占满视口 / 侧栏不会按需出现。
+  </div>
+  <h4>「要填的太多」和「AI 自主决策」是同一件事</h4>
+  <div class="note">
+    <b>字段多，是因为预设式编排要求用户提前想清楚一切。</b>名称、描述、模板、定时、每个节点用哪个助手、每个参数填什么 —— 这些全是「决策」，用户必须在点创建之前就做完。极简化的唯一出路是<b>把决策权交出去</b>：用户只给意图，其余由 AI 起草。<br>
+    这就是方案 B 的位置 —— 它<b>不删画布</b>。AI 起草的图仍然落到画布上，用户能看见、能改、能删。自主决策不等于放弃控制权，而是<b>把「从零构造」换成「审阅修改」</b>。
+  </div>
+  <div class="note">
+    <b>方案 C 才是真的不要画布，也是唯一有硬代价的那个。</b>没有图 = 没有执行前预览、没有断点续跑、没有条件分支可视化，出问题只能看日志。它以「用户完全信任模型」为前提，而当前项目的定位（多租户、可审计、有 checkpointer 断点续跑）恰好建立在「执行前能看到图」之上。所以建议把它当作<b>一个节点内部的运行时模式</b>（某个助手内部走 ReAct 循环），而不是整个工作流的形态 —— 骨架仍然是图。
+  </div>
+  <h4>建议的组合</h4>
+  <div class="note">
+    <b>布局取 D（零弹窗全屏画布）+ 入口取 B（一句话起手）</b>：点「新建工作流」直接进全屏画布，画布中央是那句输入框而不是操作指引 —— 想清楚了就输入一句话让 AI 起草，想自己搭就点「从空白开始」把它关掉。<br>
+    这样两个问题一次解决：<b>弹窗没了（画布 504→944px）</b>，<b>必填项从 1 个变成 0 个（一句意图即可）</b>，而画布、分支、断点续跑这些已有的能力一个都不用动。
+  </div>
+</div>
+
+<script>
+/* 每个 stage 缩放到卡片宽度。卡片宽度由 CSS 网格 + 媒体查询决定，
+   所以用 ResizeObserver 量而不是一次性算 —— 否则字体加载完重排就错位了。 */
+function fitOne(m){
+  var s = Math.min(m.clientWidth/1440, m.clientHeight/860)
+  m.querySelectorAll('.stage').forEach(function(st){
+    // translate 先于 scale：让缩放绕 stage 自身中心，视觉上就钉在卡片正中
+    st.style.transform = 'translate(-50%,-50%) scale(' + s + ')'
+  })
+}
+function fit(){ document.querySelectorAll('.mock').forEach(fitOne) }
+window.addEventListener('resize', fit)
+window.addEventListener('load', fit)
+if (window.ResizeObserver) {
+  var ro = new ResizeObserver(function(es){ es.forEach(function(e){ fitOne(e.target) }) })
+  document.querySelectorAll('.mock').forEach(function(m){ ro.observe(m) })
+}
+
+function setMode(m){
+  document.body.className = 'mode-' + m
+  document.getElementById('b-entry').classList.toggle('on', m === 'entry')
+  document.getElementById('b-editor').classList.toggle('on', m === 'editor')
+}
+
+/* ---------------- 可复用的 stage 片段 ---------------- */
+/* 应用外壳。必须闭合成 .app > (.topbar + .body > (.rail + .main))，
+   浮层由调用方作为 .stage 的直接子元素追加在后面（见 stage() ）。 */
+function chrome(inner){
+  return '<div class="app">' +
+    '<div class="topbar"><div class="logo">◈</div><div class="tb-t">VeyaWork 雅秩</div><div class="tb-sp"></div><div class="tb-u">冯</div></div>' +
+    '<div class="body"><div class="rail">' +
+      '<div class="it">总览</div><div class="grp">工作</div>' +
+      '<div class="it on">工作流</div><div class="it">AI 助手</div><div class="it">团队</div>' +
+      '<div class="grp">项目</div><div class="it">雅秩官网</div><div class="it">小程序</div>' +
+    '</div><div class="main">' + inner + '</div></div>' +
+  '</div>'
+}
+
+/** 列表页外壳 + 一个铺满 stage 的浮层 */
+function stage(overlay){ return chrome(WF_LIST) + overlay }
+
+var WF_LIST = '' +
+  '<h2 class="page-h">工作流</h2><p class="page-s">把多个 AI 助手串起来，一次跑完</p>' +
+  '<div class="wf-row"><span class="dot"></span><div style="flex:1"><div class="n">每日项目进展汇总</div><div class="s">3 个步骤 · 每天 09:00</div></div><span class="tag" style="font-size:11px;color:#5C5A52">运行中</span></div>' +
+  '<div class="wf-row"><span class="dot" style="background:#5C5A52"></span><div style="flex:1"><div class="n">竞品官网调研</div><div class="s">2 个步骤 · 手动触发</div></div></div>'
+
+var PALETTE = '' +
+  '<div class="pal"><div class="h">AI 助手</div><div class="sub">点击或拖拽添加一个步骤</div>' +
+  '<div class="a"><div class="x">竞品调研助手</div><div class="y">抓取指定页面并输出对比</div></div>' +
+  '<div class="a"><div class="x">周报助手</div><div class="y">按项目与周期生成周报</div></div>' +
+  '<div class="a"><div class="x">任务排期助手</div><div class="y">按优先级重排待办</div></div>' +
+  '</div>'
+
+var CFG_EMPTY = '<div class="cfg"><div class="h">步骤配置</div>' +
+  '<div style="font-size:11.5px;color:#5C5A52;line-height:1.7">选中画布里的任意步骤，在这里配置它要做什么。<br><br>也可以点连线，设置「什么情况下走这条」。</div></div>'
+
+var CFG_NODE = '<div class="cfg"><div class="h">步骤配置</div>' +
+  '<div class="f"><span class="lab">步骤名称</span><div class="inp">抓取竞品官网</div></div>' +
+  '<div class="f"><span class="lab">AI 助手</span><div class="inp">竞品调研助手</div></div>' +
+  '<div class="f"><span class="lab">调研主题</span><div class="inp">2026 秋季版本功能对比</div></div>' +
+  '<div class="f"><span class="lab">页面地址（每行一个）</span><div class="inp area">https://a.com/pricing<br>https://b.com/pricing</div></div>' +
+  '<div style="display:flex;gap:8px;margin-top:12px"><div class="btn" style="flex:1">存为模板</div><div class="btn gold" style="flex:1">完成</div></div></div>'
+
+function node(i, x, y, title, sub, ps, sel){
+  return '<div class="nd' + (sel ? ' sel' : '') + '" style="left:' + x + 'px;top:' + y + 'px">' +
+    '<div class="idx">' + i + '</div>' + (sel ? '<div class="del">×</div>' : '') +
+    '<div class="t">' + title + '</div><div class="s">' + sub + '</div>' +
+    '<div class="ps' + (sel ? '' : '') + '">' + ps + '</div>' +
+    '<div class="port l"></div><div class="port r"></div></div>'
+}
+
+/* ================= A · 入口：只问名字的小弹窗 ================= */
+document.getElementById('A-entry').innerHTML = stage(
+  '<div class="scrim"><div class="dlg" style="width:520px;max-width:520px">' +
+    '<div class="dlg-h"><div class="t">新建工作流</div><div class="x">✕</div></div>' +
+    '<div class="dlg-b">' +
+      '<div><span class="lab">给这条工作流起个名字</span><div class="inp ph">留空的话，创建后按第一个步骤自动命名</div></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:2px"><div class="btn ghost">取消</div><div class="btn gold">创建并编辑 →</div></div>' +
+      '<div style="font-size:11px;color:#5C5A52;line-height:1.6;border-top:1px solid #232321;padding-top:11px">定时运行、从模板开始这些设置，进编辑器后随时能改 —— 不必现在决定。</div>' +
+    '</div>' +
+  '</div></div>')
+
+/* ================= A · 编辑器：全屏三栏 ================= */
+document.getElementById('A-edit').innerHTML =
+  '<div class="ed"><div class="ed-h">' +
+    '<div class="back">← 工作流</div><div class="sepa"></div>' +
+    '<div class="ed-name edit">每日项目进展汇总<span class="cur"></span></div>' +
+    '<div class="tb-sp"></div>' +
+    '<div class="sched"><span>⏱</span><span class="k">定时：未设置</span></div>' +
+    '<div class="btn">保存草稿</div><div class="btn gold">创建并运行</div>' +
+  '</div><div class="ed-body">' + PALETTE +
+    '<div class="cv">' +
+      '<div class="edge" style="left:272px;top:168px;width:56px"></div>' +
+      node(1, 52, 120, '汇总本周进展', '周报助手', '项目=雅秩官网, 周期=本周') +
+      node(2, 328, 120, '生成周报正文', '周报助手', '风格=简洁, 长度=中', true) +
+      '<div class="mini">小地图</div><div class="ctrls"><span>+</span><span>−</span><span>⤢</span></div>' +
+    '</div>' + CFG_NODE +
+  '</div></div>'
+
+/* ================= B · 入口：一句话起手 ================= */
+document.getElementById('B-entry').innerHTML = stage(
+  '<div class="sheet"><div class="topbar" style="border-bottom:1px solid #232321">' +
+    '<div class="back">← 返回工作流</div><div class="tb-sp"></div><div class="btn ghost">取消</div>' +
+  '</div>' +
+  '<div class="ask">' +
+    '<h2>想让这条工作流替你做什么？</h2>' +
+    '<p class="sub">说一句就行 —— 名字、步骤、参数和运行时间我来拟，你过目再改。</p>' +
+    '<div class="askbox focus">' +
+      '<div class="q">每周一上午把三个竞品官网的价格页抓一遍，对比后写一份简报，发到项目群里<span class="cur"></span></div>' +
+      '<div class="bar2"><span class="hint">⌘↵ 生成 · 也可以直接手搭</span><div class="btn gold">让 AI 起草 →</div></div>' +
+    '</div>' +
+    '<div class="chips">' +
+      '<div class="chip">汇总本周项目进展并发通知</div>' +
+      '<div class="chip">把未完成任务按紧急度重排</div>' +
+      '<div class="chip">读完新需求文档，列出待确认问题</div>' +
+    '</div>' +
+    '<div class="alt">或者 <u>从空白画布开始</u> · <u>从模板开始</u></div>' +
+  '</div></div>')
+
+/* ================= B · 编辑器：AI 起草后的画布 ================= */
+document.getElementById('B-edit').innerHTML =
+  '<div class="ed"><div class="ed-h">' +
+    '<div class="back">← 工作流</div><div class="sepa"></div>' +
+    '<div class="ed-name edit">竞品价格周报<span class="cur"></span></div>' +
+    '<div class="draft">AI 起草 · 未保存</div>' +
+    '<div class="tb-sp"></div>' +
+    '<div class="sched"><span>⏱</span><span class="k">每周一 09:00</span><span style="color:#D9A441">AI 建议</span></div>' +
+    '<div class="btn">重新起草</div><div class="btn gold">保存并运行</div>' +
+  '</div><div class="ed-body">' + PALETTE +
+    '<div class="cv">' +
+      '<div class="edge" style="left:272px;top:168px;width:56px"></div>' +
+      '<div class="edge" style="left:548px;top:168px;width:56px"></div>' +
+      '<div class="edge-lab" style="left:276px;top:145px">无条件</div>' +
+      node(1, 52, 120, '抓取竞品价格页', '竞品调研助手', 'a.com · b.com · c.com') +
+      node(2, 328, 120, '生成对比简报', '周报助手', '项目=雅秩官网, 风格=简洁') +
+      node(3, 604, 120, '推送到项目群', '通知助手', '渠道=项目群', true) +
+      '<div class="mini">小地图</div><div class="ctrls"><span>+</span><span>−</span><span>⤢</span></div>' +
+      '<div style="position:absolute;left:20px;top:250px;right:20px;border:1px solid #4a3a1c;background:#2A2213;border-radius:10px;padding:11px 14px">' +
+        '<div style="font-size:11.5px;font-weight:650;color:#E8C078">AI 起草说明</div>' +
+        '<div style="font-size:11px;color:#C9A961;line-height:1.7;margin-top:5px">按你说的「三个竞品 + 周一一早 + 发群里」拆成 3 步；「通知助手」的渠道参数我填了项目群，如果不对点它改。定时我先拟成每周一 09:00，也可改成每天。</div>' +
+      '</div>' +
+    '</div>' + CFG_NODE +
+  '</div></div>'
+
+/* ================= C · 入口：目标输入 ================= */
+document.getElementById('C-entry').innerHTML = stage(
+  '<div class="sheet"><div class="topbar" style="border-bottom:1px solid #232321">' +
+    '<div class="back">← 返回工作流</div><div class="tb-sp"></div><div class="btn ghost">取消</div>' +
+  '</div>' +
+  '<div class="ask">' +
+    '<h2>你想达成什么？</h2>' +
+    '<p class="sub">不用想步骤 —— 我会在跑的时候自己决定调谁、要不要再来一轮。</p>' +
+    '<div class="askbox focus">' +
+      '<div class="q">看看这次发布用户都在骂什么，整理成一份能发给老板的周报<span class="cur"></span></div>' +
+      '<div class="bar2"><span class="hint">这会直接开始运行，中途可以停</span><div class="btn gold">开始运行 ▶</div></div>' +
+    '</div>' +
+    '<div class="alt" style="color:#8a5f2a">⚠ 运行前没有预览 —— 你不知道它接下来会做什么</div>' +
+  '</div></div>')
+
+/* ================= C · 编辑器：ReAct 运行中 ================= */
+document.getElementById('C-edit').innerHTML =
+  '<div class="run"><div class="run-h">' +
+    '<div class="back">← 工作流</div><div class="sepa"></div>' +
+    '<div class="ed-name">发布反馈周报</div><div class="draft">自主动态执行</div>' +
+    '<div class="tb-sp"></div><div class="btn">停止</div>' +
+  '</div><div class="run-b"><div class="run-col">' +
+    '<div class="bub me">看看这次发布用户都在骂什么，整理成一份能发给老板的周报</div>' +
+    '<div class="steps">' +
+      '<div class="stp"><div class="ic ok">✓</div><div class="m"><div class="a">检索知识库 · 发布反馈</div>' +
+        '<div class="b">命中 42 条记录，其中 11 条带「卡顿」<code>knowledge_query("发布反馈")</code></div></div></div>' +
+      '<div class="stp"><div class="ic ok">✓</div><div class="m"><div class="a">抓取应用商店近期评论</div>' +
+        '<div class="b">取回 3 页，按时间过滤到本次发布之后<code>fetch_url(...)</code></div>' +
+        '<div class="thought">模型判断：知识库覆盖不到商店评论，需要补一次外部抓取</div></div></div>' +
+      '<div class="stp"><div class="ic ok">✓</div><div class="m"><div class="a">归纳问题分类</div>' +
+        '<div class="b">归为 4 类：卡顿 11 · 登录失败 6 · UI 错位 3 · 其他 5</div></div></div>' +
+      '<div class="stp"><div class="ic now">⟳</div><div class="m"><div class="a">生成周报正文</div>' +
+        '<div class="b">正在写入…<code>weekly_report()</code></div></div></div>' +
+      '<div class="stp"><div class="ic wait">·</div><div class="m"><div class="a" style="color:#5C5A52">（模型尚未决定是否继续）</div>' +
+        '<div class="b">若它认为数据不足，会再发起一轮检索</div></div></div>' +
+    '</div>' +
+    '<div class="composer"><span style="color:#5C5A52">＋</span><div class="ph">随时补充要求，会在下一轮生效…</div><div class="btn">发送</div></div>' +
+  '</div></div></div>'
+
+/* ================= D · 入口：直接落到空画布 ================= */
+document.getElementById('D-entry').innerHTML =
+  '<div class="ed"><div class="ed-h inner">' +
+    '<div class="back">← 工作流</div><div class="sepa"></div>' +
+    '<div class="iconblk">✎</div>' +
+    '<div class="ed-name" style="color:#5C5A52">未命名工作流</div>' +
+    '<div class="tb-sp"></div>' +
+    '<div class="sched"><span>⏱</span><span>定时</span></div>' +
+    '<div class="btn gold">创建</div>' +
+  '</div><div class="ed-body">' + PALETTE +
+    '<div class="cv">' +
+      '<div class="guide">' +
+        '<div class="gt">如何创建工作流？</div>' +
+        '<div class="gi"><b>①</b><span>从左侧「AI 助手」点一下，添加第一个步骤 —— 或者直接在下面说一句你的目标</span></div>' +
+        '<div class="gi"><b>②</b><span>点画布里的步骤卡片，右侧配置它要做什么</span></div>' +
+        '<div class="gi"><b>③</b><span>点右上角「创建」，工作流即可运行</span></div>' +
+        '<div style="display:flex;gap:8px;margin-top:14px;border-top:1px solid #232321;padding-top:13px">' +
+          '<div class="inp ph" style="flex:1">说一句：想让这条工作流做什么…</div>' +
+          '<div class="btn gold">AI 起草</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="mini">小地图</div><div class="ctrls"><span>+</span><span>−</span><span>⤢</span></div>' +
+    '</div>' + CFG_EMPTY +
+  '</div></div>'
+
+/* ================= D · 编辑器：内联元数据 ================= */
+document.getElementById('D-edit').innerHTML =
+  '<div class="ed"><div class="ed-h inner">' +
+    '<div class="back">← 工作流</div><div class="sepa"></div>' +
+    '<div class="iconblk" style="color:#D9A441;border-color:#4a3a1c">◈</div>' +
+    '<div class="ed-name edit">竞品价格周报<span class="cur"></span></div>' +
+    '<div class="tb-sp"></div>' +
+    '<div class="sched"><span>⏱</span><span>每周一 09:00</span></div>' +
+    '<div class="btn gold">创建并运行</div>' +
+  '</div><div class="ed-body">' + PALETTE +
+    '<div class="cv">' +
+      '<div class="edge" style="left:272px;top:168px;width:56px"></div>' +
+      node(1, 52, 120, '抓取竞品价格页', '竞品调研助手', 'a.com · b.com · c.com') +
+      node(2, 328, 120, '生成对比简报', '周报助手', '项目=雅秩官网, 风格=简洁', true) +
+      '<div class="mini">小地图</div><div class="ctrls"><span>+</span><span>−</span><span>⤢</span></div>' +
+    '</div>' + CFG_NODE +
+  '</div></div>'
+
+fit()
+</script>
+</body>
+</html>

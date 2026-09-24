@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 
 from app.workflows.executor import interpolate
@@ -19,20 +17,6 @@ class _FakeEngine:
 
     async def knowledge_query(self, query: str, user: str = "unknown") -> str:
         return self.answer
-
-
-async def _wait_workflow_run(client, headers, run_id, timeout: float = 3.0) -> dict:
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    while True:
-        r = await client.get(f"/api/workflows/runs/{run_id}", headers=headers)
-        assert r.status_code == 200
-        data = r.json()
-        if data["status"] in ("succeeded", "failed"):
-            return data
-        if loop.time() > deadline:
-            raise AssertionError(f"run {run_id} 未在 {timeout}s 内结束: status={data['status']}")
-        await asyncio.sleep(0.05)
 
 
 def _steps(*agent_keys: str) -> list[dict]:
@@ -153,7 +137,7 @@ async def test_workflow_not_owned_404(client, auth_headers):
 # ---------- 手动运行 + 链式 ----------
 
 
-async def test_manual_run_chains_outputs(client, auth_headers, monkeypatch):
+async def test_manual_run_chains_outputs(client, auth_headers, monkeypatch, wait_run):
     fake = _FakeEngine("题库输出")
     monkeypatch.setattr("app.workflows.executor.get_ai_engine", lambda: fake)
 
@@ -169,7 +153,7 @@ async def test_manual_run_chains_outputs(client, auth_headers, monkeypatch):
 
     r = await client.post(f"/api/workflows/{wf_id}/run", headers=auth_headers)
     assert r.status_code == 202
-    data = await _wait_workflow_run(client, auth_headers, r.json()["run_id"])
+    data = await wait_run(r.json()["run_id"], auth_headers)
     assert data["status"] == "succeeded"
     assert data["triggered_by"] == "manual"
     assert len(data["results"]) == 2
@@ -180,7 +164,7 @@ async def test_manual_run_chains_outputs(client, auth_headers, monkeypatch):
     assert "题库输出" in fake.queries[1]
 
 
-async def test_manual_run_failure_records_error(client, auth_headers, monkeypatch):
+async def test_manual_run_failure_records_error(client, auth_headers, monkeypatch, wait_run):
     class _RaisingEngine(_FakeEngine):
         async def chat(self, query: str, user: str = "unknown") -> str:
             raise RuntimeError("引擎挂了")
@@ -198,12 +182,12 @@ async def test_manual_run_failure_records_error(client, auth_headers, monkeypatc
     )
     wf_id = r.json()["id"]
     r = await client.post(f"/api/workflows/{wf_id}/run", headers=auth_headers)
-    data = await _wait_workflow_run(client, auth_headers, r.json()["run_id"])
+    data = await wait_run(r.json()["run_id"], auth_headers)
     assert data["status"] == "failed"
     assert "引擎挂了" in data["error"]
 
 
-async def test_list_workflow_runs_paginated(client, auth_headers, monkeypatch):
+async def test_list_workflow_runs_paginated(client, auth_headers, monkeypatch, wait_run):
     monkeypatch.setattr("app.workflows.executor.get_ai_engine", lambda: _FakeEngine())
     r = await client.post(
         "/api/workflows",
@@ -213,7 +197,7 @@ async def test_list_workflow_runs_paginated(client, auth_headers, monkeypatch):
     wf_id = r.json()["id"]
     for _ in range(3):
         r = await client.post(f"/api/workflows/{wf_id}/run", headers=auth_headers)
-        await _wait_workflow_run(client, auth_headers, r.json()["run_id"])
+        await wait_run(r.json()["run_id"], auth_headers)
 
     r = await client.get("/api/workflows/runs?page_size=2", headers=auth_headers)
     assert r.status_code == 200
@@ -225,7 +209,7 @@ async def test_list_workflow_runs_paginated(client, auth_headers, monkeypatch):
 # ---------- 定时路径 ----------
 
 
-async def test_scheduled_trigger_runs_workflow(client, auth_headers, monkeypatch):
+async def test_scheduled_trigger_runs_workflow(client, auth_headers, monkeypatch, wait_run):
     fake = _FakeEngine("定时报告")
     monkeypatch.setattr("app.workflows.executor.get_ai_engine", lambda: fake)
 
@@ -247,7 +231,7 @@ async def test_scheduled_trigger_runs_workflow(client, auth_headers, monkeypatch
     runs = r.json()["items"]
     assert len(runs) == 1
     assert runs[0]["triggered_by"] == "scheduled"
-    data = await _wait_workflow_run(client, auth_headers, runs[0]["id"])
+    data = await wait_run(runs[0]["id"], auth_headers)
     assert data["status"] == "succeeded"
     assert data["results"][0]["output"] == "定时报告"
 
@@ -347,7 +331,7 @@ async def test_workflow_update_persists_graph_metadata(client, auth_headers):
     assert steps[1]["position"] == {"x": 240, "y": 0}
 
 
-async def test_workflow_run_with_graph_metadata(client, auth_headers, monkeypatch):
+async def test_workflow_run_with_graph_metadata(client, auth_headers, monkeypatch, wait_run):
     """执行器不因多余字段受影响：results 顺序 = steps 顺序。
 
     用必填参数补齐的 agent（competitor_research 需 topic），避免空 params 触发校验失败。
@@ -376,7 +360,7 @@ async def test_workflow_run_with_graph_metadata(client, auth_headers, monkeypatc
 
     r = await client.post(f"/api/workflows/{wf_id}/run", headers=auth_headers)
     assert r.status_code == 202
-    data = await _wait_workflow_run(client, auth_headers, r.json()["run_id"])
+    data = await wait_run(r.json()["run_id"], auth_headers)
     assert data["status"] == "succeeded"
     assert [x["agent_key"] for x in data["results"]] == ["competitor_research", "weekly_report"]
 

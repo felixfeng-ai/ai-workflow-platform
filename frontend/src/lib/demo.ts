@@ -25,6 +25,8 @@ import type {
   UnreadCount,
   User,
   Workflow,
+  WorkflowDraft,
+  WorkflowEdge,
   WorkflowRun,
   WorkflowStep,
   WritingEvent,
@@ -227,6 +229,7 @@ let workflows: Workflow[] = [
       { label: '巡检', agent_key: 'inspection_report', params: { project_id: 'p-1' }, node_id: 'n0', position: { x: 0, y: 0 } },
       { label: '周报', agent_key: 'weekly_report', params: { project_id: 'p-1' }, node_id: 'n1', position: { x: 276, y: 0 } },
     ],
+    edges: null,
     schedule: { cron: '0 9 * * *', interval_minutes: null }, enabled: true, created_at: iso(3), updated_at: iso(1),
   },
 ]
@@ -234,8 +237,9 @@ let workflows: Workflow[] = [
 let workflowRuns: WorkflowRun[] = [
   {
     id: 'wr-1', workflow_id: 'wf-1', status: 'succeeded',
-    results: [{ label: '巡检', agent_key: 'inspection_report', output: '## 巡检报告\n\n任务完成率 82%，无逾期高风险项。' }],
-    error: null, triggered_by: 'manual', started_at: iso(1), finished_at: iso(0), created_at: iso(1),
+    results: [{ label: '巡检', agent_key: 'inspection_report', output: '## 巡检报告\n\n任务完成率 82%，无逾期高风险项。', node_id: 'n0' }],
+    error: null, triggered_by: 'manual', started_at: iso(1), finished_at: iso(0),
+    resumed_at: null, created_at: iso(1),
   },
 ]
 
@@ -645,6 +649,7 @@ export const demoApi = {
     name: string
     description?: string
     steps: WorkflowStep[]
+    edges?: WorkflowEdge[] | null
     schedule?: Schedule | null
   }): Promise<Workflow> {
     await delay()
@@ -652,6 +657,7 @@ export const demoApi = {
     const wf: Workflow = {
       id: `wf-${++wid}`, user_id: 'demo-user', name: w.name, description: w.description ?? null,
       steps: w.steps,
+      edges: w.edges?.length ? w.edges : null,
       schedule: (w.schedule && (w.schedule.cron || w.schedule.interval_minutes)
         ? { cron: w.schedule.cron ?? null, interval_minutes: w.schedule.interval_minutes ?? null }
         : null),
@@ -659,6 +665,40 @@ export const demoApi = {
     }
     workflows = [wf, ...workflows]
     return wf
+  },
+  /**
+   * 演示态的「一句话起草」：不调模型，按关键词挑助手。
+   *
+   * 真实的挑选逻辑在后端 app/workflows/drafter.py，这里复刻它没有意义 ——
+   * 但也不能返回一份写死的草稿：起草的卖点就是「说什么就建什么」，
+   * 固定草稿会让访客以为这是个摆设。折中是关键词命中 + 兜底链，
+   * 至少让人看到输入和产出是相关的。
+   */
+  async draftWorkflow(intent: string): Promise<WorkflowDraft> {
+    await delay()
+    const hit = (...words: string[]) => words.some((w) => intent.includes(w))
+    const picked: string[] = []
+    if (hit('竞品', '调研', '对手', '价格')) picked.push('competitor_research')
+    if (hit('巡检', '扫描', '检查', '健康')) picked.push('inspection_report')
+    if (hit('面试', '押题', '题目')) picked.push('interview_questions')
+    if (hit('周报', '汇报', '总结', '简报')) picked.push('weekly_report')
+    const chain = picked.length ? picked : ['competitor_research', 'weekly_report']
+    const nameOf = (key: string) => agents.find((a) => a.key === key)?.name ?? key
+
+    const steps: WorkflowStep[] = chain.map((agent_key, i) => ({
+      label: nameOf(agent_key),
+      agent_key,
+      params: {},
+      node_id: `node-${i}`,
+      position: { x: i * 276, y: 0 },
+    }))
+    return {
+      name: intent.length > 12 ? `${intent.slice(0, 12)}…` : intent,
+      description: intent,
+      rationale: `按你说的「${intent}」拆成 ${steps.length} 步，每步交给一个专职助手`,
+      steps,
+      edges: null,
+    }
   },
   async updateWorkflow(id: string, patch: Partial<Workflow>): Promise<Workflow> {
     await delay()
@@ -674,10 +714,14 @@ export const demoApi = {
     const wf = workflows.find((w) => w.id === id)!
     const run: WorkflowRun = {
       id: `wr-${++wid}`, workflow_id: id, status: 'succeeded',
-      results: wf.steps.map((s, i) => ({ label: s.label, agent_key: s.agent_key, output: stubAgentOutput(s.agent_key, s.params) })),
+      results: wf.steps.map((s, i) => ({
+        label: s.label, agent_key: s.agent_key,
+        output: stubAgentOutput(s.agent_key, s.params),
+        node_id: s.node_id ?? `node-${i}`,
+      })),
       error: null, triggered_by: 'manual',
       started_at: new Date().toISOString(), finished_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
+      resumed_at: null, created_at: new Date().toISOString(),
     }
     workflowRuns = [run, ...workflowRuns]
     return { run_id: run.id, status: run.status }
@@ -691,6 +735,23 @@ export const demoApi = {
   async getWorkflowRun(runId: string): Promise<WorkflowRun> {
     await delay()
     return workflowRuns.find((r) => r.id === runId)!
+  },
+  async resumeWorkflowRun(runId: string): Promise<{ run_id: string; status: string }> {
+    await delay()
+    // 演示数据没有真实图状态，续跑就当成「重跑成功的版本」——形态与真实接口一致
+    const run = workflowRuns.find((r) => r.id === runId)!
+    const wf = workflows.find((w) => w.id === run.workflow_id)!
+    const done: WorkflowRun = {
+      ...run, status: 'succeeded', error: null,
+      resumed_at: new Date().toISOString(), finished_at: new Date().toISOString(),
+      results: wf.steps.map((s, i) => ({
+        label: s.label, agent_key: s.agent_key,
+        output: stubAgentOutput(s.agent_key, s.params),
+        node_id: s.node_id ?? `node-${i}`,
+      })),
+    }
+    workflowRuns = workflowRuns.map((r) => (r.id === runId ? done : r))
+    return { run_id: done.id, status: done.status }
   },
   // ---------- 知识库 RAG（演示数据） ----------
   async listDocuments(projectId: string): Promise<KnowledgeDocument[]> {

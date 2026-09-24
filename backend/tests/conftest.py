@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 # 可选：指向真实 PostgreSQL（含迁移验证）——设置 TEST_DATABASE_URL 后，
@@ -94,6 +95,32 @@ async def db_session(client):
     factory = app.state.test_session_factory
     async with factory() as session:
         yield session
+
+
+@pytest_asyncio.fixture
+async def wait_run(client):
+    """轮询一个工作流运行直到终态（succeeded/failed），返回结果体。
+
+    后台执行是 asyncio.create_task，测试无法直接 await 它的句柄，只能轮询接口 ——
+    这也是前端在做的事，等于顺带覆盖了运行状态的可见性。
+    """
+
+    async def _wait(run_id: str, headers: dict, timeout: float = 3.0) -> dict:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            r = await client.get(f"/api/workflows/runs/{run_id}", headers=headers)
+            assert r.status_code == 200
+            data = r.json()
+            if data["status"] in ("succeeded", "failed"):
+                return data
+            if loop.time() > deadline:
+                raise AssertionError(
+                    f"run {run_id} 未在 {timeout}s 内结束: status={data['status']}"
+                )
+            await asyncio.sleep(0.05)
+
+    return _wait
 
 
 @pytest_asyncio.fixture

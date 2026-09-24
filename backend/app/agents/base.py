@@ -7,7 +7,10 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from langchain_core.messages import HumanMessage
+
 from app.ai.base import AiEngine
+from app.llm.chat_model import AiEngineChatModel, content_text
 from app.models import Note, Project, Task, User
 
 
@@ -49,6 +52,10 @@ class AgentContext:
         self.user = user
         self.engine = engine
         self.tenant_id = tenant_id
+        # 模型门面在这里一次性构造：Agent 仍然只写 ctx.chat(prompt)，但调用链变成
+        # BaseChatModel → AiEngine —— 于是 LangChain 的回调/流式能力对全部 Agent 生效，
+        # 而 Dify ↔ OpenAI 兼容端点的可替换性由底层 engine 保住。
+        self.chat_model = AiEngineChatModel(engine=engine, user_id=user.id)
 
     async def get_projects(self) -> list[Project]:
         result = await self.db.execute(
@@ -90,8 +97,9 @@ class AgentContext:
         return list(result.scalars().all())
 
     async def chat(self, query: str) -> str:
-        """调用底层 AI 引擎生成（统一走 chat 接口）。"""
-        return await self.engine.chat(query, user=self.user.id)
+        """调用底层 AI 引擎生成。经 LangChain 模型门面（见 __init__ 的说明）转发。"""
+        message = await self.chat_model.ainvoke([HumanMessage(content=query)])
+        return content_text(message.content)
 
 
 class Agent(Protocol):
