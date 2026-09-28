@@ -25,5 +25,9 @@ class Notification(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(200))
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     ref_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # run/task/doc/成员 id，跳转锚点
-    dedupe_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    # 列宽必须 ≥ due_reminder_dedupe_key 的实际长度（两个 UUID + 日期 = 88），
+    # 留了余量到 128；改小之前先看 services/notification.py 里的那条断言。
+    dedupe_key: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, unique=True, index=True
+    )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

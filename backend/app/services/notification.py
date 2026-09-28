@@ -6,7 +6,7 @@ create_notification 是 best-effort 写入：通知失败绝不能影响调用�
 """
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -59,10 +59,20 @@ async def create_notification(
         return False
 
 
+def due_reminder_dedupe_key(user_id: str, task_id: str, day: date) -> str:
+    """到期提醒的幂等键：同 user+task+日历天 只落一条。
+
+    单独抽出来是因为它有长度约束：两个 UUID + 日期共 88 字符，必须放得进
+    notifications.dedupe_key 的列宽。SQLite 不校验 varchar 长度而 PG 会硬拒，
+    溢出的后果是提醒在线上静默写不进去 —— 所以 tests 里有一条对列宽的断言盯着它。
+    """
+    return f"due:{user_id}:{task_id}:{day.isoformat()}"
+
+
 async def scan_due_reminders(session_factory) -> int:
     """扫描今天到期或已逾期的未完成任务，为租户内每个成员各生成一条提醒。
 
-    幂等：dedupe_key = due:{user_id}:{task_id}:{today}，create_notification 预查
+    幂等：dedupe_key 见 due_reminder_dedupe_key，create_notification 预查
     + 唯一索引兜底，同 user+task+day 只落一条；逾期任务次日会再提醒。
     返回本次实际插入条数。
     """
@@ -92,7 +102,7 @@ async def scan_due_reminders(session_factory) -> int:
                     body=f"任务「{task.title}」已于 {task.due_date} 到期，请及时处理",
                     ref_id=task.id,
                     tenant_id=task.tenant_id,
-                    dedupe_key=f"due:{uid}:{task.id}:{today.isoformat()}",
+                    dedupe_key=due_reminder_dedupe_key(uid, task.id, today),
                 )
                 if ok:
                     count += 1

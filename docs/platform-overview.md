@@ -313,6 +313,13 @@ channel 归约、checkpoint 协议都固化成框架契约，业务代码只需�
 2. **到期提醒按天幂等**。唯一列 `dedupe_key = due:{user_id}:{task_id}:{date}` + 应用层预查双保险。
    每天 9/15/21 点扫描（Asia/Shanghai 时区），逾期任务次日会再次提醒但当天只提醒一次。
 
+   > 这个键长 88 字符（两个 UUID + 日期），列宽一度只有 64。SQLite 不校验 `varchar` 长度，
+   > 所以本地单测全绿；**PostgreSQL 会硬拒**，而 `create_notification` 的「吞异常」不变量
+   > 把它变成了静默失败 —— 线上到期提醒一条都没落库，只有日志里一行 ERROR。
+   > 这正是 CI 必须 SQLite / PostgreSQL 双腿并跑的理由：**同一个 bug，一条腿看得见，另一条看不见。**
+   > 现有两道闸：迁移 `c9d0e1f2a3b4` 把列宽放到 128，外加一条对列宽的断言（`test_notifications.py`），
+   > 后者在 SQLite 上就能红。
+
 前端为 30 秒轮询未读数 + 面板内乐观更新（点开即置已读，请求失败下次刷新校正）。
 
 ### 3.9 前端工程：demo / live 双模式数据层

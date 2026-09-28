@@ -5,7 +5,7 @@ create_notification（SAVEPOINT 内写入，测试侧再 commit），保持与�
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -16,7 +16,11 @@ from app.models.notification import Notification
 from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
-from app.services.notification import create_notification, scan_due_reminders
+from app.services.notification import (
+    create_notification,
+    due_reminder_dedupe_key,
+    scan_due_reminders,
+)
 
 
 class _RecordingEngine:
@@ -216,6 +220,20 @@ async def test_readonly_can_read_own_notifications(client, auth_headers, db_sess
 
 
 # ---------- 到期提醒：幂等 + done/未来不生成 ----------
+
+
+def test_dedupe_key_fits_column_width():
+    """幂等键必须放得进 notifications.dedupe_key 的列宽。
+
+    SQLite 不校验 varchar 长度而 PG 会，溢出的表现是**只在线上的**写入失败：
+    create_notification 吞掉异常返回 False，scan 静默算出 0 条，任务永远不提醒。
+    所以这条断言必须在单测里挡住，不能只靠 PG 那条腿。
+    """
+    key = due_reminder_dedupe_key(
+        "1e292549-ecf8-4eea-8476-a22e29eee6a6", "19efe1dc-f715-40da-ab04-149a1ed708a6", date(2026, 9, 28)
+    )
+    width = Notification.__table__.c.dedupe_key.type.length
+    assert len(key) <= width, f"dedupe_key 长 {len(key)}，列宽只有 {width}"
 
 
 async def _seed_task(db_session, tenant_id: str, *, title: str, status: str, due_date) -> Task:
