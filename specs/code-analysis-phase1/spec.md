@@ -25,6 +25,15 @@
 - When owner 不填写访问 Token
 - Then 系统仍可通过 GitHub 匿名 API 完成仓库验证和分析
 
+### Scenario 1.1b：保存后的 GitHub 接入指引
+
+- Given 项目 owner 已保存仓库连接
+- When 页面展示 Webhook URL 和 Secret
+- Then 页面显示打开 GitHub Webhook 设置的可点击入口
+- And 列出 Payload URL、Content type、Secret、SSL 和 Push 事件配置项
+- And 提供复制完整配置和重新生成 Secret 的说明
+- And 明确提示保存后推送匹配分支进行验证
+
 ### Scenario 1.2：非 owner 禁止配置
 
 - Given 当前用户不是 owner

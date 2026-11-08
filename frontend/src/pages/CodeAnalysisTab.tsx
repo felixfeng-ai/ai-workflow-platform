@@ -87,6 +87,7 @@ export function CodeAnalysisTab({
   const [patterns, setPatterns] = useState('feature/*\nfix/*')
   const [webhookSecret, setWebhookSecret] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const [copiedField, setCopiedField] = useState('')
 
   const loadConfig = useCallback(async () => {
     try {
@@ -214,8 +215,10 @@ export function CodeAnalysisTab({
     }
   }
 
-  async function copy(value: string) {
+  async function copy(value: string, field: string) {
     await navigator.clipboard.writeText(value)
+    setCopiedField(field)
+    window.setTimeout(() => setCopiedField(''), 1500)
   }
 
   async function downloadSelected() {
@@ -242,6 +245,8 @@ export function CodeAnalysisTab({
   if (loading) {
     return <Card className="h-48 animate-pulse bg-elev1" />
   }
+
+  const webhookUrl = config ? `${window.location.origin}${config.webhook_path}` : ''
 
   return (
     <div className="space-y-5">
@@ -274,7 +279,11 @@ export function CodeAnalysisTab({
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {config && <Badge tone={config.enabled ? 'success' : 'neutral'}>{config.enabled ? '已启用' : '已停用'}</Badge>}
+                {config && (
+                  <Badge tone={config.enabled ? 'success' : 'neutral'}>
+                    {config.enabled ? '仓库已连接' : '已停用'}
+                  </Badge>
+                )}
                 {canConfigure && config && (
                   <>
                     <Button size="sm" variant="secondary" loading={saving} onClick={() => void verify()}>
@@ -294,40 +303,17 @@ export function CodeAnalysisTab({
             {config && (
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="rounded-lg border border-line-soft bg-elev1 p-3">
-                  <div className="text-[10.5px] font-medium text-ink-4">Webhook URL</div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate text-[11.5px] text-ink-2">
-                      {window.location.origin}{config.webhook_path}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void copy(`${window.location.origin}${config.webhook_path}`)}
-                    >
-                      复制
-                    </Button>
+                  <div className="text-[10.5px] font-medium text-ink-4">仓库连接</div>
+                  <div className="mt-1 text-[12px] text-ink-2">
+                    {config.enabled ? '平台已可读取仓库，等待 GitHub 发送 Push' : '仓库连接已停用'}
                   </div>
                 </div>
                 <div className="rounded-lg border border-line-soft bg-elev1 p-3">
-                  <div className="text-[10.5px] font-medium text-ink-4">最近验证</div>
+                  <div className="text-[10.5px] font-medium text-ink-4">最近连接检查</div>
                   <div className="mt-1 text-[12px] text-ink-2">
                     {config.last_verified_at ? new Date(config.last_verified_at).toLocaleString('zh-CN') : '尚未验证'}
                   </div>
                   {config.last_error && <div className="mt-1 text-[11px] text-error">{config.last_error}</div>}
-                </div>
-              </div>
-            )}
-
-            {webhookSecret && config && (
-              <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
-                <div className="text-[11.5px] font-medium text-warning">
-                  Secret 只显示一次，请立即复制到 GitHub Webhook 设置
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <code className="min-w-0 flex-1 truncate text-[11.5px] text-ink-2">{webhookSecret}</code>
-                  <Button size="sm" variant="secondary" onClick={() => void copy(webhookSecret)}>
-                    复制 Secret
-                  </Button>
                 </div>
               </div>
             )}
@@ -375,6 +361,17 @@ export function CodeAnalysisTab({
               </form>
             )}
           </Card>
+
+          {config && (
+            <WebhookSetupGuide
+              config={config}
+              webhookUrl={webhookUrl}
+              webhookSecret={webhookSecret}
+              copiedField={copiedField}
+              onCopy={(value, field) => void copy(value, field)}
+              onRegenerate={() => setEditing(true)}
+            />
+          )}
 
           <div>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -549,6 +546,131 @@ export function CodeAnalysisTab({
         </>
       )}
     </div>
+  )
+}
+
+function WebhookSetupGuide({
+  config,
+  webhookUrl,
+  webhookSecret,
+  copiedField,
+  onCopy,
+  onRegenerate,
+}: {
+  config: CodeAnalysisConfig
+  webhookUrl: string
+  webhookSecret: string
+  copiedField: string
+  onCopy: (value: string, field: string) => void
+  onRegenerate: () => void
+}) {
+  const settingsUrl = `https://github.com/${config.repo_full_name}/settings/hooks/new`
+  const copyLabel = (field: string) => (copiedField === field ? '已复制' : '复制')
+  const fullConfig = [
+    'GitHub Webhook 配置',
+    `Payload URL: ${webhookUrl}`,
+    'Content type: application/json',
+    `Secret: ${webhookSecret || '请点击重新生成 Secret'}`,
+    'SSL verification: Enable SSL verification',
+    'Events: Just the push event',
+    'Active: 勾选',
+  ].join('\n')
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line p-4">
+        <div>
+          <h2 className="text-[14px] font-semibold text-ink">完成 GitHub Webhook 接入</h2>
+          <p className="mt-1 text-[12px] leading-5 text-ink-3">
+            保存配置只完成了平台侧连接。还需要在 GitHub 添加一次 Webhook，Push 后才会自动生成报告。
+          </p>
+        </div>
+        <a
+          href={settingsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-line-strong px-3 text-[12px] font-medium text-ink transition-colors hover:bg-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-primary/60"
+        >
+          打开 GitHub Webhook 设置
+        </a>
+      </div>
+
+      <ol className="grid gap-3 border-b border-line p-4 md:grid-cols-4">
+        {[
+          ['1', '打开设置', `仓库 Settings → Webhooks → Add webhook`],
+          ['2', '填写连接', '复制下面 Payload URL 与 Secret'],
+          ['3', '选择事件', 'Content type 选 JSON，事件选 Just the push event'],
+          ['4', '保存并验证', '向匹配分支 Push，GitHub Deliveries 应返回 202'],
+        ].map(([number, title, description]) => (
+          <li key={number} className="flex gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-gold/30 bg-gold-tint font-mono text-[11px] text-gold">
+              {number}
+            </span>
+            <div>
+              <div className="text-[12px] font-semibold text-ink">{title}</div>
+              <p className="mt-0.5 text-[11px] leading-5 text-ink-4">{description}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="divide-y divide-line border-b border-line">
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_64px] md:items-center">
+          <span className="text-[11.5px] font-medium text-ink-3">Payload URL *</span>
+          <code className="break-all text-[11.5px] text-ink-2">{webhookUrl}</code>
+          <Button size="sm" variant="ghost" onClick={() => onCopy(webhookUrl, 'payload')}>
+            {copyLabel('payload')}
+          </Button>
+        </div>
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_64px] md:items-center">
+          <span className="text-[11.5px] font-medium text-ink-3">Content type *</span>
+          <code className="text-[11.5px] text-ink-2">application/json</code>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onCopy('application/json', 'content-type')}
+          >
+            {copyLabel('content-type')}
+          </Button>
+        </div>
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_64px] md:items-center">
+          <span className="text-[11.5px] font-medium text-ink-3">Secret</span>
+          <code className="break-all text-[11.5px] text-ink-2">
+            {webhookSecret || '已隐藏，刷新后无法再次查看'}
+          </code>
+          {webhookSecret ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onCopy(webhookSecret, 'secret')}
+            >
+              {copyLabel('secret')}
+            </Button>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={onRegenerate}>
+              重新生成
+            </Button>
+          )}
+        </div>
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr] md:items-center">
+          <span className="text-[11.5px] font-medium text-ink-3">SSL verification</span>
+          <span className="text-[11.5px] text-ink-2">保持 Enable SSL verification</span>
+        </div>
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr] md:items-center">
+          <span className="text-[11.5px] font-medium text-ink-3">Events *</span>
+          <span className="text-[11.5px] text-ink-2">选择 Just the push event，并勾选 Active</span>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <p className="max-w-2xl text-[11px] leading-5 text-ink-4">
+          Secret 只在保存或重新生成时显示一次。如果已经关闭页面，请点击“重新生成”，然后在 GitHub Webhook 中同步更新。
+        </p>
+        <Button size="sm" variant="secondary" onClick={() => onCopy(fullConfig, 'all')}>
+          {copiedField === 'all' ? '已复制全部配置' : '复制全部配置'}
+        </Button>
+      </div>
+    </Card>
   )
 }
 
