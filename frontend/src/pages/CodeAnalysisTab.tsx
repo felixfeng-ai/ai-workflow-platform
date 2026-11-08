@@ -153,6 +153,15 @@ export function CodeAnalysisTab({
     return () => window.clearInterval(timer)
   }, [loadRuns, runs])
 
+  function startEditing() {
+    if (config) {
+      setRepoUrl(`https://github.com/${config.repo_full_name}`)
+      setPatterns(config.branch_patterns.join('\n'))
+      setAccessToken('')
+    }
+    setEditing(true)
+  }
+
   function resetFilters() {
     setKeyword('')
     setStatusFilter('')
@@ -181,6 +190,8 @@ export function CodeAnalysisTab({
       setConfig(created)
       setGuideExpanded(true)
       setWebhookSecret(created.webhook_secret ?? '')
+      setRepoUrl(`https://github.com/${created.repo_full_name}`)
+      setPatterns(created.branch_patterns.join('\n'))
       setAccessToken('')
       setEditing(false)
       await Promise.all([loadConfig(), loadRuns()])
@@ -328,7 +339,7 @@ export function CodeAnalysisTab({
                     <Button size="sm" variant="secondary" loading={saving} onClick={() => void verify()}>
                       验证连接
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing((v) => !v)}>
+                    <Button size="sm" variant="ghost" onClick={startEditing}>
                       重新配置
                     </Button>
                     <Button size="sm" variant="danger" onClick={() => void removeConfig()}>
