@@ -88,6 +88,7 @@ export function CodeAnalysisTab({
   const [webhookSecret, setWebhookSecret] = useState('')
   const [downloading, setDownloading] = useState(false)
   const [copiedField, setCopiedField] = useState('')
+  const [guideExpanded, setGuideExpanded] = useState<boolean | null>(null)
 
   const loadConfig = useCallback(async () => {
     try {
@@ -136,6 +137,12 @@ export function CodeAnalysisTab({
   }, [loadConfig])
 
   useEffect(() => {
+    if (!config || config.webhook_connected_at) return
+    const timer = window.setInterval(() => void loadConfig(), 5000)
+    return () => window.clearInterval(timer)
+  }, [config, loadConfig])
+
+  useEffect(() => {
     const timer = window.setTimeout(() => void loadRuns(), 250)
     return () => window.clearTimeout(timer)
   }, [loadRuns])
@@ -172,6 +179,7 @@ export function CodeAnalysisTab({
         enabled: true,
       })
       setConfig(created)
+      setGuideExpanded(true)
       setWebhookSecret(created.webhook_secret)
       setAccessToken('')
       setEditing(false)
@@ -200,6 +208,7 @@ export function CodeAnalysisTab({
     try {
       await layer.deleteCodeAnalysisConfig(project.id)
       setConfig(null)
+      setGuideExpanded(null)
       setWebhookSecret('')
       setEditing(false)
     } catch (e) {
@@ -247,6 +256,8 @@ export function CodeAnalysisTab({
   }
 
   const webhookUrl = config ? `${window.location.origin}${config.webhook_path}` : ''
+  const webhookConnected = Boolean(config?.webhook_connected_at)
+  const showGuide = config ? (guideExpanded ?? !webhookConnected) : false
 
   return (
     <div className="space-y-5">
@@ -362,16 +373,28 @@ export function CodeAnalysisTab({
             )}
           </Card>
 
-          {config && (
-            <WebhookSetupGuide
-              config={config}
-              webhookUrl={webhookUrl}
-              webhookSecret={webhookSecret}
-              copiedField={copiedField}
-              onCopy={(value, field) => void copy(value, field)}
-              onRegenerate={() => setEditing(true)}
-            />
-          )}
+          {config &&
+            (showGuide ? (
+              <WebhookSetupGuide
+                config={config}
+                webhookUrl={webhookUrl}
+                webhookSecret={webhookSecret}
+                copiedField={copiedField}
+                connected={webhookConnected}
+                onCopy={(value, field) => void copy(value, field)}
+                onRegenerate={() => setEditing(true)}
+                onCollapse={() => setGuideExpanded(false)}
+              />
+            ) : webhookConnected ? (
+              <WebhookConnectedSummary
+                config={config}
+                onExpand={() => setGuideExpanded(true)}
+              />
+            ) : (
+              <WebhookCollapsedSummary
+                onExpand={() => setGuideExpanded(true)}
+              />
+            ))}
 
           <div>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -388,54 +411,65 @@ export function CodeAnalysisTab({
               </Button>
             </div>
             <Card className="mb-3 p-3">
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                <Input
-                  value={keyword}
-                  onChange={(e) => {
-                    setKeyword(e.target.value)
-                    setPage(1)
-                  }}
-                  placeholder="搜索 Commit、SHA、分支、文件、功能或风险"
-                  className="md:col-span-2"
-                />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value)
-                    setPage(1)
-                  }}
-                  className="h-9 rounded-lg border border-line-soft bg-elev1 px-2 text-[12px] text-ink-2 focus:border-gold-primary/60 focus:outline-none"
-                >
-                  <option value="">全部状态</option>
-                  <option value="succeeded">已完成</option>
-                  <option value="partial">部分完成</option>
-                  <option value="running">分析中</option>
-                  <option value="pending">等待分析</option>
-                  <option value="failed">失败</option>
-                </select>
-                <select
-                  value={severityFilter}
-                  onChange={(e) => {
-                    setSeverityFilter(e.target.value)
-                    setPage(1)
-                  }}
-                  className="h-9 rounded-lg border border-line-soft bg-elev1 px-2 text-[12px] text-ink-2 focus:border-gold-primary/60 focus:outline-none"
-                >
-                  <option value="">全部风险</option>
-                  <option value="critical">严重及以上</option>
-                  <option value="high">高风险及以上</option>
-                  <option value="medium">中风险及以上</option>
-                  <option value="low">低风险及以上</option>
-                </select>
-                <Input
-                  value={branchFilter}
-                  onChange={(e) => {
-                    setBranchFilter(e.target.value)
-                    setPage(1)
-                  }}
-                  placeholder="精确分支名"
-                />
-                <label className="space-y-1">
+              <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-12">
+                <label className="space-y-1 sm:col-span-2 xl:col-span-6">
+                  <span className="block text-[10.5px] text-ink-4">搜索</span>
+                  <Input
+                    value={keyword}
+                    onChange={(e) => {
+                      setKeyword(e.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="Commit、SHA、分支、文件、功能或风险"
+                  />
+                </label>
+                <label className="space-y-1 xl:col-span-3">
+                  <span className="block text-[10.5px] text-ink-4">状态</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value)
+                      setPage(1)
+                    }}
+                    className="h-9 w-full rounded-lg border border-line-soft bg-elev1 px-2 text-[12px] text-ink-2 focus:border-gold-primary/60 focus:outline-none"
+                  >
+                    <option value="">全部状态</option>
+                    <option value="succeeded">已完成</option>
+                    <option value="partial">部分完成</option>
+                    <option value="running">分析中</option>
+                    <option value="pending">等待分析</option>
+                    <option value="failed">失败</option>
+                  </select>
+                </label>
+                <label className="space-y-1 xl:col-span-3">
+                  <span className="block text-[10.5px] text-ink-4">风险等级</span>
+                  <select
+                    value={severityFilter}
+                    onChange={(e) => {
+                      setSeverityFilter(e.target.value)
+                      setPage(1)
+                    }}
+                    className="h-9 w-full rounded-lg border border-line-soft bg-elev1 px-2 text-[12px] text-ink-2 focus:border-gold-primary/60 focus:outline-none"
+                  >
+                    <option value="">全部风险</option>
+                    <option value="critical">严重及以上</option>
+                    <option value="high">高风险及以上</option>
+                    <option value="medium">中风险及以上</option>
+                    <option value="low">低风险及以上</option>
+                  </select>
+                </label>
+                <label className="space-y-1 sm:col-span-2 xl:col-span-4">
+                  <span className="block text-[10.5px] text-ink-4">分支名</span>
+                  <Input
+                    value={branchFilter}
+                    onChange={(e) => {
+                      setBranchFilter(e.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="精确分支名"
+                  />
+                </label>
+                <label className="space-y-1 xl:col-span-2">
                   <span className="block text-[10.5px] text-ink-4">开始日期</span>
                   <Input
                     type="date"
@@ -446,7 +480,7 @@ export function CodeAnalysisTab({
                     }}
                   />
                 </label>
-                <label className="space-y-1">
+                <label className="space-y-1 xl:col-span-2">
                   <span className="block text-[10.5px] text-ink-4">结束日期</span>
                   <Input
                     type="date"
@@ -457,7 +491,7 @@ export function CodeAnalysisTab({
                     }}
                   />
                 </label>
-                <div className="flex items-end">
+                <div className="flex items-center justify-end sm:col-span-2 xl:col-span-4">
                   <Button size="sm" variant="ghost" onClick={resetFilters}>
                     清除筛选
                   </Button>
@@ -549,22 +583,89 @@ export function CodeAnalysisTab({
   )
 }
 
+function WebhookConnectedSummary({
+  config,
+  onExpand,
+}: {
+  config: CodeAnalysisConfig
+  onExpand: () => void
+}) {
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-[14px] font-semibold text-ink">GitHub Webhook 已接通</h2>
+            <Badge tone="success">已接通</Badge>
+          </div>
+          <p className="mt-1 text-[12px] text-ink-3">
+            最近事件：{config.webhook_last_event || '未知'}
+            {config.webhook_connected_at
+              ? ` · ${new Date(config.webhook_connected_at).toLocaleString('zh-CN')}`
+              : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={`https://github.com/${config.repo_full_name}/settings/hooks`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-line-strong px-3 text-[12px] font-medium text-ink transition-colors hover:bg-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-primary/60"
+          >
+            管理 GitHub Webhook
+          </a>
+          <Button size="sm" variant="ghost" onClick={onExpand}>
+            查看接入说明
+          </Button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function WebhookCollapsedSummary({ onExpand }: { onExpand: () => void }) {
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-[13px] font-semibold text-ink-2">GitHub Webhook 接入说明已收起</h2>
+            <Badge tone="neutral">待完成</Badge>
+          </div>
+          <p className="mt-1 text-[11.5px] text-ink-4">
+            添加 Webhook 并推送代码后，平台会自动显示接通状态。
+          </p>
+        </div>
+        <Button size="sm" variant="ghost" onClick={onExpand}>
+          展开接入说明
+        </Button>
+      </div>
+    </Card>
+  )
+}
+
 function WebhookSetupGuide({
   config,
   webhookUrl,
   webhookSecret,
   copiedField,
+  connected,
   onCopy,
   onRegenerate,
+  onCollapse,
 }: {
   config: CodeAnalysisConfig
   webhookUrl: string
   webhookSecret: string
   copiedField: string
+  connected: boolean
   onCopy: (value: string, field: string) => void
   onRegenerate: () => void
+  onCollapse: () => void
 }) {
-  const settingsUrl = `https://github.com/${config.repo_full_name}/settings/hooks/new`
+  const settingsUrl = `https://github.com/${config.repo_full_name}/settings/hooks${
+    connected ? '' : '/new'
+  }`
   const copyLabel = (field: string) => (copiedField === field ? '已复制' : '复制')
   const fullConfig = [
     'GitHub Webhook 配置',
@@ -580,19 +681,28 @@ function WebhookSetupGuide({
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line p-4">
         <div>
-          <h2 className="text-[14px] font-semibold text-ink">完成 GitHub Webhook 接入</h2>
+          <h2 className="text-[14px] font-semibold text-ink">
+            {connected ? 'GitHub Webhook 接入说明' : '完成 GitHub Webhook 接入'}
+          </h2>
           <p className="mt-1 text-[12px] leading-5 text-ink-3">
-            保存配置只完成了平台侧连接。还需要在 GitHub 添加一次 Webhook，Push 后才会自动生成报告。
+            {connected
+              ? `GitHub 已向平台发送过 ${config.webhook_last_event || '事件'}，后续 Push 会自动生成报告。`
+              : '保存配置只完成了平台侧连接。还需要在 GitHub 添加一次 Webhook，Push 后才会自动生成报告。'}
           </p>
         </div>
-        <a
-          href={settingsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-line-strong px-3 text-[12px] font-medium text-ink transition-colors hover:bg-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-primary/60"
-        >
-          打开 GitHub Webhook 设置
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={settingsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-line-strong px-3 text-[12px] font-medium text-ink transition-colors hover:bg-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-primary/60"
+          >
+            {connected ? '管理 GitHub Webhook' : '打开 GitHub Webhook 设置'}
+          </a>
+          <Button size="sm" variant="ghost" onClick={onCollapse}>
+            收起说明
+          </Button>
+        </div>
       </div>
 
       <ol className="grid gap-3 border-b border-line p-4 md:grid-cols-4">

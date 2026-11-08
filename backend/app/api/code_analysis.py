@@ -58,6 +58,8 @@ def _config_read(connection: ProjectRepoConnection) -> CodeAnalysisConfigRead:
         enabled=connection.enabled,
         webhook_path=_webhook_path(connection.id),
         last_verified_at=connection.last_verified_at,
+        webhook_connected_at=connection.webhook_connected_at,
+        webhook_last_event=connection.webhook_last_event,
         last_error=connection.last_error,
     )
 

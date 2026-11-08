@@ -4,6 +4,7 @@ import fnmatch
 import hashlib
 import hmac
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -29,6 +30,16 @@ def _matches_branch(branch: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatchcase(branch, pattern) for pattern in patterns)
 
 
+async def _mark_connected(
+    db: AsyncSession, connection: ProjectRepoConnection, event: str
+) -> None:
+    now = datetime.now(timezone.utc)
+    if connection.webhook_connected_at is None:
+        connection.webhook_connected_at = now
+    connection.webhook_last_event = event
+    await db.commit()
+
+
 @router.post("/{connection_id}/webhook")
 async def github_webhook(
     connection_id: str,
@@ -48,6 +59,7 @@ async def github_webhook(
 
     event = request.headers.get("X-GitHub-Event", "")
     if event == "ping":
+        await _mark_connected(db, connection, event)
         return Response(status_code=200)
     if event != "push":
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -64,6 +76,7 @@ async def github_webhook(
         raise HTTPException(status_code=400, detail="repository does not match connection")
     if not connection.enabled:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+    await _mark_connected(db, connection, event)
 
     ref = str(payload.get("ref") or "")
     if not ref.startswith("refs/heads/"):

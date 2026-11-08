@@ -33,6 +33,14 @@
 - And 列出 Payload URL、Content type、Secret、SSL 和 Push 事件配置项
 - And 提供复制完整配置和重新生成 Secret 的说明
 - And 明确提示保存后推送匹配分支进行验证
+- And 用户可手动收起或重新展开指引
+
+### Scenario 1.1c：Webhook 接通状态
+
+- Given GitHub 已向平台发送 ping 或 push
+- When 页面重新读取仓库配置
+- Then 展示 Webhook 已接通、最近事件和回调时间
+- And 接入向导默认收起，可按需重新展开
 
 ### Scenario 1.2：非 owner 禁止配置
 

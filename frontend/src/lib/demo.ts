@@ -137,6 +137,8 @@ let codeAnalysisConfigs: Record<string, CodeAnalysisConfig> = {
     enabled: true,
     webhook_path: '/api/integrations/github/demo-connection/webhook',
     last_verified_at: iso(0, 9),
+    webhook_connected_at: iso(0, 9),
+    webhook_last_event: 'push',
     last_error: null,
   },
 }
@@ -621,6 +623,8 @@ export const demoApi = {
       enabled: payload.enabled ?? true,
       webhook_path: `/api/integrations/github/demo-${projectId}/webhook`,
       last_verified_at: new Date().toISOString(),
+      webhook_connected_at: null,
+      webhook_last_event: null,
       last_error: null,
     }
     codeAnalysisConfigs = { ...codeAnalysisConfigs, [projectId]: config }
