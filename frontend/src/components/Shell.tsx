@@ -171,6 +171,7 @@ export function Shell({
               onUpdateNote={handlers.updateNote}
               onDeleteNote={handlers.deleteNote}
               onDeleteProject={handlers.deleteProject}
+              canConfigureCodeAnalysis={mode === 'demo' || user?.role === 'owner'}
             />
           )}
         </main>

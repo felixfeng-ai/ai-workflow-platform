@@ -1,0 +1,28 @@
+rules:
+  - id: code-analysis.python-exec
+    languages: [python]
+    message: Avoid exec() with dynamic input.
+    severity: ERROR
+    patterns:
+      - pattern: 'exec(...)'
+  - id: code-analysis.python-subprocess-shell
+    languages: [python]
+    message: Avoid subprocess calls with shell=True.
+    severity: ERROR
+    pattern: 'subprocess.$FUNC(..., shell=True, ...)'
+  - id: code-analysis.javascript-eval
+    languages: [javascript, typescript]
+    message: Avoid eval() with dynamic input.
+    severity: ERROR
+    pattern: 'eval(...)'
+  - id: code-analysis.react-dangerous-html
+    languages: [typescript, javascript]
+    message: Review dangerouslySetInnerHTML for untrusted content.
+    severity: WARNING
+    pattern: 'dangerouslySetInnerHTML={...}'
+  - id: code-analysis.tls-verify-disabled
+    languages: [python]
+    message: TLS certificate verification is disabled.
+    severity: ERROR
+    pattern-either:
+      - pattern: 'requests.$METHOD(..., verify=False, ...)'

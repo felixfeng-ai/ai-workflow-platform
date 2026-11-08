@@ -13,6 +13,7 @@ import type { Note, Project, Task } from '../types'
 import { DocTab } from './DocTab'
 import { KanbanBoard } from '../components/KanbanBoard'
 import { KnowledgeTab } from './KnowledgeTab'
+import { CodeAnalysisTab } from './CodeAnalysisTab'
 
 export function ProjectPage({
   project,
@@ -28,6 +29,7 @@ export function ProjectPage({
   onUpdateNote,
   onDeleteNote,
   onDeleteProject,
+  canConfigureCodeAnalysis,
 }: {
   project?: Project
   tasks: Task[]
@@ -42,10 +44,11 @@ export function ProjectPage({
   onUpdateNote: (id: string, patch: Partial<Note>) => Promise<void>
   onDeleteNote: (id: string) => Promise<void>
   onDeleteProject: (id: string) => Promise<void>
+  canConfigureCodeAnalysis: boolean
 }) {
   const [showTaskForm, setShowTaskForm] = useState(false)
   const [taskMode, setTaskMode] = useState<'list' | 'board'>('list')
-  const [tab, setTab] = useState<'overview' | 'knowledge' | 'docs'>('overview')
+  const [tab, setTab] = useState<'overview' | 'knowledge' | 'docs' | 'code-analysis'>('overview')
   const [taskTitle, setTaskTitle] = useState('')
   const [priority, setPriority] = useState('medium')
   const [noteTitle, setNoteTitle] = useState('')
@@ -167,6 +170,19 @@ export function ProjectPage({
           )}
         >
           文档
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'code-analysis'}
+          aria-controls="project-code-analysis"
+          id="tab-code-analysis"
+          onClick={() => setTab('code-analysis')}
+          className={cn(
+            'relative -mb-px border-b-2 px-3 pb-2 pt-1 text-[13px] transition-colors',
+            tab === 'code-analysis' ? 'border-gold text-gold' : 'border-transparent text-ink-3 hover:text-ink',
+          )}
+        >
+          代码分析
         </button>
       </div>
 
@@ -303,9 +319,18 @@ export function ProjectPage({
         <div id="project-knowledge" role="tabpanel" aria-labelledby="tab-knowledge">
           <KnowledgeTab key={project.id} layer={layer} project={project} />
         </div>
-      ) : (
+      ) : tab === 'docs' ? (
         <div id="project-docs" role="tabpanel" aria-labelledby="tab-docs">
           <DocTab key={project.id} layer={layer} project={project} />
+        </div>
+      ) : (
+        <div id="project-code-analysis" role="tabpanel" aria-labelledby="tab-code-analysis">
+          <CodeAnalysisTab
+            key={project.id}
+            layer={layer}
+            project={project}
+            canConfigure={canConfigureCodeAnalysis}
+          />
         </div>
       )}
     </div>

@@ -23,6 +23,7 @@
 ### 能力地图
 
 - **工作台** —— 项目看板、任务看板（待办/进行中/已完成）、Markdown 笔记
+- **代码提交分析** —— GitHub push Webhook 自动生成变更量、功能点、影响、安全扫描和测试缺口报告，支持搜索、筛选、分页和下载 DOCX
 - **AI 副驾** —— SSE 流式对话，可挂载项目上下文，逐字返回
 - **多智能体** —— 4 个内置智能体（周报 / 巡检报告 / 面试题 / 竞品调研）+ 自定义智能体（自写 Prompt、可挂工具）
 - **工作流编排** —— 可视化画布连线编排，支持条件分支与并行执行，失败即止、可断点续跑、运行记录可回看
@@ -97,7 +98,7 @@ backend/                 FastAPI 服务
   app/llm/               LangGraph 接缝（AiEngine→BaseChatModel 门面、SQLAlchemy Checkpointer）
   app/ai/                AI 引擎适配层（dify / openai_compatible 统一接口）
   alembic/               数据库迁移（建表的唯一来源）
-  tests/                 21 个测试文件 / 191 个用例
+  tests/                 26 个测试文件 / 318 个用例
 frontend/                React SPA
   src/pages/             页面：Dashboard / Project / Agents / Workflows / Team / Login / Knowledge ...
   src/components/        组件：Shell / KanbanBoard / AiPanel / workflow 画布 ...
@@ -122,6 +123,167 @@ design-previews/         设计预览稿
                                  ├─ Dify CE headless
                                  └─ OpenAI 兼容端点（DeepSeek / 通义）
 ```
+
+### 架构图
+
+#### ① 系统架构
+
+```mermaid
+flowchart TB
+    subgraph CL["客户端"]
+        W["浏览器 SPA<br/>React 18 + Vite"]
+        M["微信小程序<br/>Taro"]
+    end
+
+    NG["Nginx 网关<br/>静态托管 + /api 反代 + SSE 不缓冲"]
+
+    subgraph BE["FastAPI 后端"]
+        API["api/ 路由层<br/>参数校验 · 鉴权 · 租户过滤"]
+        CAP["能力层<br/>agents · workflows · rag · copilot · writing"]
+        INF["基础设施层<br/>llm · ai · services · core"]
+        MOD["models/ + schemas/<br/>ORM 与数据契约"]
+        API --> CAP
+        API --> INF
+        CAP --> INF
+        CAP --> MOD
+        INF --> MOD
+    end
+
+    PG[("PostgreSQL 16<br/>生产")]
+    SQ[("SQLite<br/>本地 / 单测")]
+    AIE["AI Engine<br/>Dify CE · DeepSeek · 通义"]
+    WX["微信开放接口"]
+
+    W --> NG
+    M --> NG
+    NG --> API
+    MOD --> PG
+    MOD --> SQ
+    INF --> AIE
+    INF --> WX
+```
+
+#### ② 后端模块结构
+
+```mermaid
+flowchart LR
+    subgraph API["路由层 · app/api/"]
+        A1["projects · tasks · notes · docs"]
+        A2["agents · workflows · ai · knowledge"]
+        A3["auth · team · notifications · wechat"]
+    end
+
+    subgraph CAP["能力层"]
+        C1["agents/ 智能体<br/>4 内置 + 自定义"]
+        C2["workflows/ 工作流引擎<br/>graph · executor · scheduler"]
+        C3["rag/ 知识库<br/>chunker · retriever"]
+        C4["copilot/ AI 副驾"]
+        C5["writing/ AI 写作"]
+    end
+
+    subgraph INF["基础设施层"]
+        I1["llm/ LangGraph 接缝<br/>chat_model · checkpointer"]
+        I2["ai/ 引擎适配<br/>dify · openai_compatible"]
+        I3["services/<br/>guest · notification · deploy"]
+        I4["core/<br/>security · ratelimit"]
+    end
+
+    subgraph DAT["数据层"]
+        D1["models/ ORM"]
+        D2["schemas/ 契约"]
+        D3[("PostgreSQL / SQLite")]
+    end
+
+    API --> CAP
+    API --> INF
+    CAP --> INF
+    INF --> DAT
+```
+
+#### ③ AI 能力栈：一个接口，两个实现
+
+```mermaid
+flowchart TB
+    subgraph CONS["消费方"]
+        AG["agents/ 智能体"]
+        WF["workflows/ 图节点"]
+        CP["copilot/ 副驾"]
+        WR["writing/ 写作"]
+    end
+
+    CTX["AgentContext.chat()"]
+    CM["llm/chat_model.py<br/>AiEngineChatModel · BaseChatModel"]
+    PROTO["ai/base.py<br/>AiEngine · Protocol"]
+    DIFY["DifyEngine"]
+    OAI["OpenAICompatibleEngine"]
+
+    AG --> CTX
+    WF --> CTX
+    CTX --> CM
+    CM --> PROTO
+    CP --> PROTO
+    WR --> PROTO
+    PROTO --> DIFY
+    PROTO --> OAI
+```
+
+切换引擎是**部署级**的：`AI_PROVIDER` 环境变量在 `get_ai_engine()` 里二选一，没有前端入口、也没有按应用粒度的模型选择。
+
+#### ④ 一次工作流执行流程
+
+```mermaid
+flowchart TD
+    T["触发<br/>手动 API / APScheduler"] --> R["建 run · status=running<br/>丢进 asyncio 后台任务"]
+    R --> BG["build_workflow_graph(steps, edges)<br/>每次运行重新编译"]
+    BG --> INV["ainvoke(state, config)<br/>thread_id = run_id"]
+    INV --> STEP["节点执行<br/>自开短会话 → resolve_agent → ctx.chat()"]
+    STEP --> CP["SqlAlchemyCheckpointer<br/>每个 super-step 落盘"]
+    CP --> MORE{"还有后继节点？"}
+    MORE -->|是| STEP
+    MORE -->|否| COL["sort_results 按 index 收口"]
+    COL --> OK["run.results · status=succeeded"]
+    STEP -.->|任一步抛错| FAIL["status=failed<br/>回读最后检查点，保留已完成步骤"]
+    OK --> NOTIFY["写 finished_at + 发通知"]
+    FAIL --> NOTIFY
+```
+
+状态只在 `WorkflowState.outputs` 一个字段上流转，类型是 `Annotated[list[dict], operator.add]`：并行分支各写各的、由 reducer 合并，**节点之间不需要互相加锁**；每条结果带 `index`，收口时按 `index` 排序还原画布顺序——并行之下**完成顺序不等于步骤顺序**。`thread_id` 就是 `run_id`，续跑时 `ainvoke(None, ...)` 从最后一份检查点接着跑，已完成步骤不重跑。
+
+#### ⑤ 工作流状态图：节点与条件边
+
+图不是写死的 —— 画布上的 `steps`（节点）与 `edges`（边）在每次运行时编译成一张 `StateGraph`。下面是一个三路分支的示例：
+
+```mermaid
+flowchart TD
+    START(["START"]) --> n0["n0 · 采集项目动态<br/>agent_key = competitor_research"]
+
+    n0 -->|"when contains「风险」"| n1["n1 · 巡检报告"]
+    n0 -->|"when not_contains「风险」"| n2["n2 · 竞品调研"]
+    n0 -->|"无条件边 · 恒成立"| n3["n3 · 周报生成"]
+
+    n1 --> n4["n4 · 汇总<br/>prev_output = 各路输出拼接"]
+    n2 --> n4
+    n3 --> n4
+
+    n4 --> END(["END"])
+```
+
+四处与「按教程写的 LangGraph」不一样的地方：
+
+- **节点名是 `n0`/`n1`…，不是画布上的 `node_id`** —— LangGraph 把节点名当通道名前缀（`branch:to:<name>`），带冒号或下划线的名字会被当成子图命名空间解析。`node_id` 是用户可提交的字符串，直接拿来当节点名等于把内部命名规则暴露给外部输入。
+- **出边可以有多条同时成立** —— 路由器返回列表即**并行扇出**。互斥要靠条件自己写（如上面 `contains` / `not_contains` 成对）。无条件边恒成立。
+- **一条边都不成立时抛错，不静默结束** —— 静默结束会把 run 记成 `succeeded`，用户看到「成功了但只跑了一半」，这是最难查的一类问题。
+- **汇聚节点要求各分支等深** —— 不等深的汇聚在**保存时**就被 `validate_graph` 判为非法，而不是运行时悄悄多烧一次模型调用。
+
+条件本身是一门结构化 DSL，不是表达式字符串（避免把服务端任意代码执行权交出去）：
+
+```json
+{ "op": "contains", "left": "{{prev_output}}", "right": "风险" }
+```
+
+`op` 是一份白名单：文本（`contains` / `not_contains` / `starts_with` / `ends_with`）、相等（`eq` / `ne`）、空值（`is_empty` / `not_empty`）、数值（`gt` / `gte` / `lt` / `lte`）、组合（`all` / `any` / `not`，最多嵌套 6 层）。没有属性访问、没有函数调用、没有下标。
+
+---
 
 几条贯穿全局的设计约束，改代码时请留意：
 
@@ -148,6 +310,7 @@ design-previews/         设计预览稿
 | 文档                                                                           | 内容                                                                                         |
 | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | [docs/platform-overview.md](docs/platform-overview.md)                         | **平台全景**：定位、能力地图、技术选型理由、9 个核心技术方案、数据模型、路线图、对外介绍话术 |
+| [docs/code-analysis-technical-design.md](docs/code-analysis-technical-design.md) | **代码提交分析**：GitHub 接入、数据模型、Webhook、分析流水线、报告结构与实施阶段 |
 | [DEPLOYMENT.md](DEPLOYMENT.md)                                                 | 部署与运维：环境变量、Docker Compose、香港反代、排障                                         |
 | [DESIGN.md](DESIGN.md)                                                         | 设计体系：色彩、排版、组件规范                                                               |
 | [docs/competitive-analysis.md](docs/competitive-analysis.md)                   | 竞品分析                                                                                     |
@@ -157,6 +320,6 @@ design-previews/         设计预览稿
 
 ## 工程状态
 
-- 后端 93 个文件 / 5,633 行，前端 47 个文件 / 6,708 行
-- 21 个测试文件 / 191 个用例，CI 双跑：内存 SQLite 单测 + 真实 PostgreSQL 集成测试（走迁移）
+- 后端 117 个文件 / 8,562 行，前端 50 个文件 / 8,651 行
+- 26 个测试文件 / 318 个用例，CI 双跑：内存 SQLite 单测 + 真实 PostgreSQL 集成测试（走迁移）
 - CI 每次推送跑后端测试与前端构建；`main` 分支自动部署生产

@@ -1,6 +1,7 @@
 from .agent_run import AgentRun
 from .base import Base
 from .checkpoint import LangGraphCheckpoint, LangGraphWrite
+from .code_analysis import CodeAnalysisRun, ProjectRepoConnection
 from .custom_agent import CustomAgent
 from .deploy_run import DeployRun
 from .doc import Doc
@@ -20,6 +21,7 @@ from .workflow_run import WorkflowRun
 __all__ = [
     "AgentRun",
     "Base",
+    "CodeAnalysisRun",
     "CustomAgent",
     "DeployRun",
     "Doc",
@@ -32,6 +34,7 @@ __all__ = [
     "Notification",
     "ParamTemplate",
     "Project",
+    "ProjectRepoConnection",
     "Task",
     "User",
     "WechatSubscription",

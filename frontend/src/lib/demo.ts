@@ -4,6 +4,11 @@ import type {
   AgentRun,
   AgentSource,
   AuthResponse,
+  CodeAnalysisConfig,
+  CodeAnalysisConfigCreated,
+  CodeAnalysisReport,
+  CodeAnalysisRun,
+  CodeAnalysisRunSummary,
   CopilotEvent,
   CopilotMessage,
   CustomAgentRead,
@@ -116,6 +121,193 @@ let documents: KnowledgeDocument[] = [
   {
     id: 'd-4', project_id: 'p-3', name: 'DESIGN.md', source: 'scan', content_type: 'md',
     status: 'ready', error: null, source_path: 'DESIGN.md', created_at: iso(1),
+  },
+]
+
+// ---------- 代码提交分析（演示数据） ----------
+
+let codeAnalysisConfigs: Record<string, CodeAnalysisConfig> = {
+  'p-3': {
+    id: 'ca-1',
+    project_id: 'p-3',
+    provider: 'github',
+    repo_full_name: 'Drir1203/ai-workflow-platform',
+    default_branch: 'main',
+    branch_patterns: ['feature/*', 'fix/*'],
+    enabled: true,
+    webhook_path: '/api/integrations/github/demo-connection/webhook',
+    last_verified_at: iso(0, 9),
+    last_error: null,
+  },
+}
+
+const demoCodeAnalysisReport: CodeAnalysisReport = {
+  schema_version: '1.0',
+  repo_full_name: 'Drir1203/ai-workflow-platform',
+  branch: 'feature/code-analysis',
+  before_sha: '1111111111111111111111111111111111111111',
+  after_sha: '2222222222222222222222222222222222222222',
+  summary: '本次推送新增代码分析后台链路、Webhook 验签与项目页报告入口。',
+  change_scale: {
+    commits: 2,
+    files: 9,
+    additions: 286,
+    deletions: 34,
+    languages: { Python: 5, TypeScript: 3, YAML: 1 },
+    statuses: { added: 3, modified: 5, renamed: 1 },
+    truncated: false,
+  },
+  commits: [
+    { sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', message: 'feat: add code analysis run model', author: '林' },
+    { sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', message: 'feat: show report in project page', author: '林' },
+  ],
+  functional_points: [
+    {
+      title: '新增代码分析后台任务',
+      description: '接收 push 范围，拉取 GitHub compare 并生成报告。',
+      files: ['backend/app/services/code_analysis/runner.py'],
+      confidence: 'high',
+      evidence: ['aaaaaaaaaaaa'],
+    },
+    {
+      title: '项目页代码分析入口',
+      description: '展示连接状态、历史报告与结构化风险详情。',
+      files: ['frontend/src/pages/CodeAnalysisTab.tsx'],
+      confidence: 'high',
+    },
+  ],
+  modules: ['backend/app/api', 'backend/app/services', 'frontend/src/pages'],
+  boundaries: [
+    {
+      module: 'backend/app/api',
+      boundary_type: 'api',
+      description: 'Webhook 使用独立公开入口和 HMAC 验签。',
+      evidence: ['backend/app/api/github_webhooks.py'],
+      confidence: 'high',
+    },
+  ],
+  state_management: [
+    {
+      area: 'code_analysis_runs',
+      mechanism: '数据库状态机',
+      risk: '服务重启可能留下 running 任务，需要恢复扫描。',
+      evidence: ['backend/app/models/code_analysis.py'],
+      confidence: 'high',
+    },
+  ],
+  data_structures: ['project_repo_connections', 'code_analysis_runs'],
+  impact: {
+    direct: ['新增 3 个文件', '修改 5 个文件', '重命名 1 个文件'],
+    indirect: ['通知类型新增 code_analysis', '项目页增加代码分析 Tab'],
+    external_contracts: ['GitHub push Webhook'],
+    test_gaps: ['还需要真实 GitHub 私有仓库联调。'],
+  },
+  security_scans: { secret_scan: 'completed', semgrep: 'completed' },
+  security_findings: [
+    {
+      severity: 'medium',
+      category: 'sast',
+      title: 'Webhook 日志可能包含敏感请求数据',
+      file: 'backend/app/api/github_webhooks.py',
+      line: 42,
+      source: 'semgrep',
+      evidence: 'logger.info(request.body)',
+      recommendation: '只记录 Delivery ID 和事件类型，不记录原始 body。',
+      confidence: 'high',
+    },
+  ],
+  test_gaps: ['Force Push 和新分支 before 为空尚未覆盖真实仓库。'],
+  review_checklist: [
+    '核对 Webhook 签名和 Delivery 去重。',
+    '验证跨租户无法读取连接和报告。',
+    '确认失败通知不会影响报告落库。',
+  ],
+  unknowns: ['尚未验证超大仓库的 compare API 截断行为。'],
+  limitations: ['V1 未建立完整调用图，影响范围部分为启发式结果。'],
+}
+
+let codeAnalysisRuns: CodeAnalysisRun[] = [
+  {
+    id: 'car-1',
+    project_id: 'p-3',
+    connection_id: 'ca-1',
+    trigger_type: 'webhook',
+    repo_full_name: demoCodeAnalysisReport.repo_full_name,
+    branch: demoCodeAnalysisReport.branch,
+    before_sha: demoCodeAnalysisReport.before_sha,
+    after_sha: demoCodeAnalysisReport.after_sha,
+    pusher_login: '林',
+    head_commit_message: 'feat: code analysis report',
+    status: 'succeeded',
+    change_stats: demoCodeAnalysisReport.change_scale,
+    report: demoCodeAnalysisReport,
+    report_markdown: null,
+    analysis_version: '1.0',
+    search_text:
+      'Drir1203/ai-workflow-platform feature/code-analysis webhook runner CodeAnalysisTab.tsx 安全 代码分析',
+    max_severity: 'medium',
+    finding_count: 1,
+    ai_provider: 'openai_compatible',
+    ai_model: 'deepseek-chat',
+    truncated: false,
+    error: null,
+    started_at: iso(0, 9),
+    finished_at: iso(0, 9),
+    created_at: iso(0, 9),
+  },
+  {
+    id: 'car-2',
+    project_id: 'p-3',
+    connection_id: 'ca-1',
+    trigger_type: 'webhook',
+    repo_full_name: 'Drir1203/ai-workflow-platform',
+    branch: 'fix/payment-retry',
+    before_sha: '3333333333333333333333333333333333333333',
+    after_sha: '4444444444444444444444444444444444444444',
+    pusher_login: '林',
+    head_commit_message: 'fix: harden payment retry state',
+    status: 'failed',
+    change_stats: { commits: 1, files: 3, additions: 42, deletions: 12, languages: { Python: 2, TypeScript: 1 }, statuses: { modified: 3 }, truncated: false },
+    report: null,
+    report_markdown: null,
+    analysis_version: '1.0',
+    search_text: 'payment retry state 状态管理 backend/app/payment.py',
+    max_severity: 'none',
+    finding_count: 0,
+    ai_provider: null,
+    ai_model: null,
+    truncated: false,
+    error: 'GitHub Compare API 临时超时',
+    started_at: iso(1, 14),
+    finished_at: iso(1, 14),
+    created_at: iso(1, 14),
+  },
+  {
+    id: 'car-3',
+    project_id: 'p-3',
+    connection_id: 'ca-1',
+    trigger_type: 'webhook',
+    repo_full_name: 'Drir1203/ai-workflow-platform',
+    branch: 'docs/code-analysis-guide',
+    before_sha: '5555555555555555555555555555555555555555',
+    after_sha: '6666666666666666666666666666666666666666',
+    pusher_login: '林',
+    head_commit_message: 'docs: add code analysis guide',
+    status: 'succeeded',
+    change_stats: { commits: 1, files: 2, additions: 88, deletions: 0, languages: { Markdown: 2 }, statuses: { added: 2 }, truncated: false },
+    report: null,
+    report_markdown: null,
+    analysis_version: '1.0',
+    search_text: 'code analysis guide README docs 使用说明',
+    max_severity: 'none',
+    finding_count: 0,
+    ai_provider: null,
+    ai_model: null,
+    truncated: false,
+    error: null,
+    started_at: iso(2, 11),
+    finished_at: iso(2, 11),
+    created_at: iso(2, 11),
   },
 ]
 
@@ -305,6 +497,7 @@ let notifications: Notification[] = [
   { id: 'no-3', type: 'workflow_run', title: '工作流运行完成', body: '工作流「每日巡检」（手动）已运行完成', ref_id: 'wr-1', read_at: iso(2), created_at: iso(2) },
   { id: 'no-4', type: 'team', title: '新成员加入团队', body: 'lin@example.com 通过邀请加入了你的团队（角色：member）', ref_id: 'm-2', read_at: null, created_at: iso(3) },
   { id: 'no-5', type: 'knowledge', title: '文档已入库', body: '文档「巡检流程.md」已成功导入知识库', ref_id: 'd-2', read_at: iso(4), created_at: iso(4) },
+  { id: 'no-6', type: 'code_analysis', title: '代码分析完成', body: 'Drir1203/ai-workflow-platform · feature/code-analysis · 完成提交分析', ref_id: 'car-1', read_at: null, created_at: iso(0, 9) },
 ]
 
 export const demoApi = {
@@ -403,12 +596,120 @@ export const demoApi = {
   async getDeployment(_projectId: string, _runId: string): Promise<DeployRun> {
     throw new Error('演示模式不支持部署')
   },
+  // ---------- 代码提交分析 ----------
+  async getCodeAnalysisConfig(projectId: string): Promise<CodeAnalysisConfig | null> {
+    await delay()
+    return codeAnalysisConfigs[projectId] ?? null
+  },
+  async configureCodeAnalysis(
+    projectId: string,
+    payload: { repo_url: string; access_token: string; branch_patterns: string[]; enabled?: boolean },
+  ): Promise<CodeAnalysisConfigCreated> {
+    await delay()
+    const repo = payload.repo_url
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .replace(/\/$/, '')
+    const existing = codeAnalysisConfigs[projectId]
+    const config: CodeAnalysisConfig = {
+      id: existing?.id ?? `ca-${++cid}`,
+      project_id: projectId,
+      provider: 'github',
+      repo_full_name: repo || 'acme/demo',
+      default_branch: 'main',
+      branch_patterns: payload.branch_patterns,
+      enabled: payload.enabled ?? true,
+      webhook_path: `/api/integrations/github/demo-${projectId}/webhook`,
+      last_verified_at: new Date().toISOString(),
+      last_error: null,
+    }
+    codeAnalysisConfigs = { ...codeAnalysisConfigs, [projectId]: config }
+    return { ...config, webhook_secret: `whsec_demo_${projectId}` }
+  },
+  async verifyCodeAnalysisConfig(projectId: string): Promise<CodeAnalysisConfig> {
+    await delay()
+    const config = codeAnalysisConfigs[projectId]
+    if (!config) throw new Error('尚未配置仓库连接')
+    const verified = { ...config, last_verified_at: new Date().toISOString(), last_error: null }
+    codeAnalysisConfigs = { ...codeAnalysisConfigs, [projectId]: verified }
+    return verified
+  },
+  async deleteCodeAnalysisConfig(projectId: string): Promise<void> {
+    await delay()
+    const next = { ...codeAnalysisConfigs }
+    delete next[projectId]
+    codeAnalysisConfigs = next
+  },
+  async listCodeAnalysisRuns(
+    projectId: string,
+    opts?: {
+      page?: number
+      page_size?: number
+      keyword?: string
+      status?: string
+      branch?: string
+      date_from?: string
+      date_to?: string
+      severity?: string
+    },
+  ): Promise<Paginated<CodeAnalysisRunSummary>> {
+    await delay()
+    const page = opts?.page ?? 1
+    const pageSize = opts?.page_size ?? 20
+    const rank: Record<string, number> = { none: 0, info: 1, low: 2, medium: 3, high: 4, critical: 5 }
+    let filtered = codeAnalysisRuns.filter((run) => run.project_id === projectId)
+    const keyword = opts?.keyword?.trim().toLowerCase()
+    if (keyword) {
+      filtered = filtered.filter((run) =>
+        [
+          run.branch,
+          run.before_sha,
+          run.after_sha,
+          run.head_commit_message ?? '',
+          run.search_text ?? '',
+        ].some((value) => value.toLowerCase().includes(keyword)),
+      )
+    }
+    if (opts?.status) filtered = filtered.filter((run) => run.status === opts.status)
+    if (opts?.branch?.trim()) filtered = filtered.filter((run) => run.branch === opts.branch?.trim())
+    if (opts?.severity) {
+      const threshold = rank[opts.severity] ?? 0
+      filtered = filtered.filter((run) => (rank[run.max_severity] ?? 0) >= threshold)
+    }
+    if (opts?.date_from) {
+      filtered = filtered.filter((run) => run.created_at.slice(0, 10) >= opts.date_from!)
+    }
+    if (opts?.date_to) {
+      filtered = filtered.filter((run) => run.created_at.slice(0, 10) <= opts.date_to!)
+    }
+    return {
+      items: filtered.slice((page - 1) * pageSize, page * pageSize),
+      total: filtered.length,
+      page,
+      page_size: pageSize,
+    }
+  },
+  async getCodeAnalysisRun(projectId: string, runId: string): Promise<CodeAnalysisRun> {
+    await delay()
+    const run = codeAnalysisRuns.find((item) => item.project_id === projectId && item.id === runId)
+    if (!run) throw new Error('代码分析报告不存在')
+    return run
+  },
+  async downloadCodeAnalysisDocx(_projectId: string, _runId: string): Promise<Blob> {
+    const response = await fetch('/demo/code-analysis-sample.docx')
+    if (!response.ok) throw new Error('演示报告下载失败')
+    return response.blob()
+  },
   async deleteProject(id: string): Promise<void> {
     await delay()
     projects = projects.filter((p) => p.id !== id)
     tasks = tasks.filter((t) => t.project_id !== id)
     notes = notes.filter((n) => n.project_id !== id)
     docs = docs.filter((d) => d.project_id !== id)
+    codeAnalysisRuns = codeAnalysisRuns.filter((run) => run.project_id !== id)
+    const nextConfigs = { ...codeAnalysisConfigs }
+    delete nextConfigs[id]
+    codeAnalysisConfigs = nextConfigs
   },
   async listTasks(projectId?: string): Promise<Task[]> {
     await delay()
