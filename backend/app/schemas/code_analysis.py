@@ -8,6 +8,7 @@ class CodeAnalysisConfigCreate(BaseModel):
     access_token: str = Field(default="", max_length=500)
     branch_patterns: list[str] = Field(default_factory=lambda: ["feature/*", "fix/*"])
     enabled: bool = True
+    rotate_secret: bool = False
 
 
 class CodeAnalysisConfigRead(BaseModel):
@@ -30,7 +31,7 @@ class CodeAnalysisConfigRead(BaseModel):
 class CodeAnalysisConfigCreated(CodeAnalysisConfigRead):
     """Webhook Secret 只在创建/轮换响应中出现一次。"""
 
-    webhook_secret: str
+    webhook_secret: str | None = None
 
 
 class CodeAnalysisRunRead(BaseModel):

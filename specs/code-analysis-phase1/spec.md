@@ -42,6 +42,13 @@
 - Then 展示 Webhook 已接通、最近事件和回调时间
 - And 接入向导默认收起，可按需重新展开
 
+### Scenario 1.1d：重新配置不破坏现有 Webhook
+
+- Given 项目已有 Webhook Secret
+- When owner 修改仓库或分支配置并保存
+- Then 原 Webhook Secret 保持不变
+- And 只有显式点击“重新生成 Secret”时才轮换
+
 ### Scenario 1.2：非 owner 禁止配置
 
 - Given 当前用户不是 owner

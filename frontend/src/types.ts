@@ -47,7 +47,7 @@ export interface CodeAnalysisConfig {
 }
 
 export interface CodeAnalysisConfigCreated extends CodeAnalysisConfig {
-  webhook_secret: string
+  webhook_secret: string | null
 }
 
 export type CodeAnalysisStatus = 'pending' | 'running' | 'succeeded' | 'partial' | 'failed'

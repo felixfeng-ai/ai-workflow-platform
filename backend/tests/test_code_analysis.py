@@ -183,6 +183,41 @@ async def test_configure_public_repository_without_token(client, auth_headers, m
     assert response.json()["repo_full_name"] == "pypa/sampleproject"
 
 
+async def test_reconfigure_preserves_secret_and_rotation_changes_it(
+    client, auth_headers, db_session, monkeypatch
+):
+    import app.api.code_analysis as code_analysis_api
+
+    monkeypatch.setattr(code_analysis_api, "GitHubClient", FakeGitHubClient)
+    project = (
+        await client.post("/api/projects", headers=auth_headers, json={"name": "Secret 项目"})
+    ).json()
+    first = (await _configure(client, auth_headers, project["id"])).json()
+    second = (await _configure(client, auth_headers, project["id"])).json()
+    assert second["webhook_secret"] is None
+
+    connection = (
+        await db_session.execute(
+            select(ProjectRepoConnection).where(
+                ProjectRepoConnection.project_id == project["id"]
+            )
+        )
+    ).scalar_one()
+    assert decrypt_secret(connection.webhook_secret_encrypted) == first["webhook_secret"]
+
+    rotated = await client.post(
+        f"/api/projects/{project['id']}/code-analysis/config/rotate-secret",
+        headers=auth_headers,
+    )
+    assert rotated.status_code == 201
+    assert rotated.json()["webhook_secret"] != first["webhook_secret"]
+    await db_session.refresh(connection)
+    assert (
+        decrypt_secret(connection.webhook_secret_encrypted)
+        == rotated.json()["webhook_secret"]
+    )
+
+
 async def test_non_owner_cannot_configure_code_analysis(
     client, auth_headers, db_session, monkeypatch
 ):

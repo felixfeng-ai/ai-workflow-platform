@@ -119,7 +119,10 @@ async def configure_code_analysis(
     if duplicate is not None:
         raise HTTPException(status_code=409, detail="该仓库已绑定到当前团队的其他项目")
 
-    webhook_secret = f"whsec_{secrets.token_urlsafe(32)}"
+    webhook_secret = None
+    if existing is None or payload.rotate_secret:
+        webhook_secret = f"whsec_{secrets.token_urlsafe(32)}"
+        assert webhook_secret is not None
     connection = existing or ProjectRepoConnection(
         tenant_id=user.tenant_id,
         project_id=project.id,
@@ -136,7 +139,8 @@ async def configure_code_analysis(
     connection.repo_full_name = verified_full_name
     connection.default_branch = default_branch
     connection.branch_patterns = patterns
-    connection.webhook_secret_encrypted = encrypt_secret(webhook_secret)
+    if webhook_secret:
+        connection.webhook_secret_encrypted = encrypt_secret(webhook_secret)
     connection.access_token_encrypted = encrypt_secret(payload.access_token)
     connection.enabled = payload.enabled
     connection.last_verified_at = datetime.now(timezone.utc)
@@ -146,6 +150,39 @@ async def configure_code_analysis(
     await db.commit()
     await db.refresh(connection)
 
+    return CodeAnalysisConfigCreated(
+        **_config_read(connection).model_dump(),
+        webhook_secret=webhook_secret,
+    )
+
+
+@router.post(
+    "/config/rotate-secret",
+    response_model=CodeAnalysisConfigCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+async def rotate_code_analysis_secret(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(owner_only),
+) -> CodeAnalysisConfigCreated:
+    project = await _get_project(db, user, project_id)
+    connection = (
+        await db.execute(
+            select(ProjectRepoConnection).where(
+                ProjectRepoConnection.project_id == project.id,
+                ProjectRepoConnection.provider == "github",
+            )
+        )
+    ).scalar_one_or_none()
+    if connection is None:
+        raise HTTPException(status_code=404, detail="尚未配置仓库连接")
+    webhook_secret = f"whsec_{secrets.token_urlsafe(32)}"
+    connection.webhook_secret_encrypted = encrypt_secret(webhook_secret)
+    connection.webhook_connected_at = None
+    connection.webhook_last_event = None
+    await db.commit()
+    await db.refresh(connection)
     return CodeAnalysisConfigCreated(
         **_config_read(connection).model_dump(),
         webhook_secret=webhook_secret,

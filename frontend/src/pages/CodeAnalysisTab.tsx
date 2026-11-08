@@ -180,7 +180,7 @@ export function CodeAnalysisTab({
       })
       setConfig(created)
       setGuideExpanded(true)
-      setWebhookSecret(created.webhook_secret)
+      setWebhookSecret(created.webhook_secret ?? '')
       setAccessToken('')
       setEditing(false)
       await Promise.all([loadConfig(), loadRuns()])
@@ -198,6 +198,28 @@ export function CodeAnalysisTab({
       setError('')
     } catch (e) {
       setError(e instanceof Error ? e.message : '验证失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function rotateSecret() {
+    if (
+      !window.confirm(
+        '重新生成后，GitHub Webhook 中的旧 Secret 会立即失效。确认生成新 Secret？',
+      )
+    ) {
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const rotated = await layer.rotateCodeAnalysisSecret(project.id)
+      setConfig(rotated)
+      setWebhookSecret(rotated.webhook_secret ?? '')
+      setGuideExpanded(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '重新生成 Secret 失败')
     } finally {
       setSaving(false)
     }
@@ -382,7 +404,7 @@ export function CodeAnalysisTab({
                 copiedField={copiedField}
                 connected={webhookConnected}
                 onCopy={(value, field) => void copy(value, field)}
-                onRegenerate={() => setEditing(true)}
+                onRegenerate={() => void rotateSecret()}
                 onCollapse={() => setGuideExpanded(false)}
               />
             ) : webhookConnected ? (
@@ -758,7 +780,7 @@ function WebhookSetupGuide({
             </Button>
           ) : (
             <Button size="sm" variant="ghost" onClick={onRegenerate}>
-              重新生成
+              重新生成 Secret
             </Button>
           )}
         </div>
