@@ -157,7 +157,7 @@ export function CodeAnalysisTab({
 
   async function saveConfig(e: FormEvent) {
     e.preventDefault()
-    if (!repoUrl.trim() || !accessToken.trim()) return
+    if (!repoUrl.trim()) return
     setSaving(true)
     setError('')
     try {
