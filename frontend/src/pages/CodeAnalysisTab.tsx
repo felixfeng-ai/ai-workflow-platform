@@ -216,8 +216,14 @@ export function CodeAnalysisTab({
     try {
       const rotated = await layer.rotateCodeAnalysisSecret(project.id)
       setConfig(rotated)
-      setWebhookSecret(rotated.webhook_secret ?? '')
+      const secret = rotated.webhook_secret ?? ''
+      setWebhookSecret(secret)
       setGuideExpanded(true)
+      if (secret) {
+        await navigator.clipboard.writeText(secret)
+        setCopiedField('secret')
+        window.setTimeout(() => setCopiedField(''), 1500)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : '重新生成 Secret 失败')
     } finally {
@@ -685,9 +691,7 @@ function WebhookSetupGuide({
   onRegenerate: () => void
   onCollapse: () => void
 }) {
-  const settingsUrl = `https://github.com/${config.repo_full_name}/settings/hooks${
-    connected ? '' : '/new'
-  }`
+  const settingsUrl = `https://github.com/${config.repo_full_name}/settings/hooks`
   const copyLabel = (field: string) => (copiedField === field ? '已复制' : '复制')
   const fullConfig = [
     'GitHub Webhook 配置',
@@ -719,7 +723,7 @@ function WebhookSetupGuide({
             rel="noreferrer"
             className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-line-strong px-3 text-[12px] font-medium text-ink transition-colors hover:bg-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-primary/60"
           >
-            {connected ? '管理 GitHub Webhook' : '打开 GitHub Webhook 设置'}
+           {connected ? '管理 GitHub Webhook' : '打开 GitHub Webhook 设置'}
           </a>
           <Button size="sm" variant="ghost" onClick={onCollapse}>
             收起说明
@@ -745,6 +749,10 @@ function WebhookSetupGuide({
           </li>
         ))}
       </ol>
+
+      <p className="border-b border-line px-4 py-2.5 text-[11px] leading-5 text-ink-4">
+        如果仓库已经有 Webhook，请打开列表后点击右侧 Edit 更新 Secret，不要重复新建。
+      </p>
 
       <div className="divide-y divide-line border-b border-line">
         <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_64px] md:items-center">
