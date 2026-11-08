@@ -194,9 +194,15 @@ export const api = {
       access_token: string
       branch_patterns: string[]
       enabled?: boolean
+      rotate_secret?: boolean
     },
   ) =>
     request<CodeAnalysisConfigCreated>('POST', `/api/projects/${projectId}/code-analysis/config`, payload),
+  rotateCodeAnalysisSecret: (projectId: string) =>
+    request<CodeAnalysisConfigCreated>(
+      'POST',
+      `/api/projects/${projectId}/code-analysis/config/rotate-secret`,
+    ),
   verifyCodeAnalysisConfig: (projectId: string) =>
     request<CodeAnalysisConfig>('POST', `/api/projects/${projectId}/code-analysis/verify`),
   deleteCodeAnalysisConfig: (projectId: string) =>

@@ -142,6 +142,9 @@ let codeAnalysisConfigs: Record<string, CodeAnalysisConfig> = {
     last_error: null,
   },
 }
+let demoWebhookSecrets: Record<string, string> = {
+  'p-3': 'whsec_demo_connected',
+}
 
 const demoCodeAnalysisReport: CodeAnalysisReport = {
   schema_version: '1.0',
@@ -605,7 +608,13 @@ export const demoApi = {
   },
   async configureCodeAnalysis(
     projectId: string,
-    payload: { repo_url: string; access_token: string; branch_patterns: string[]; enabled?: boolean },
+    payload: {
+      repo_url: string
+      access_token: string
+      branch_patterns: string[]
+      enabled?: boolean
+      rotate_secret?: boolean
+    },
   ): Promise<CodeAnalysisConfigCreated> {
     await delay()
     const repo = payload.repo_url
@@ -628,7 +637,30 @@ export const demoApi = {
       last_error: null,
     }
     codeAnalysisConfigs = { ...codeAnalysisConfigs, [projectId]: config }
-    return { ...config, webhook_secret: `whsec_demo_${projectId}` }
+    if (!existing || payload.rotate_secret) {
+      demoWebhookSecrets = {
+        ...demoWebhookSecrets,
+        [projectId]: `whsec_demo_${projectId}_${++cid}`,
+      }
+    }
+    return {
+      ...config,
+      webhook_secret: existing && !payload.rotate_secret ? null : demoWebhookSecrets[projectId],
+    }
+  },
+  async rotateCodeAnalysisSecret(projectId: string): Promise<CodeAnalysisConfigCreated> {
+    await delay()
+    const config = codeAnalysisConfigs[projectId]
+    if (!config) throw new Error('尚未配置仓库连接')
+    const secret = `whsec_demo_${projectId}_${++cid}`
+    demoWebhookSecrets = { ...demoWebhookSecrets, [projectId]: secret }
+    const rotated = {
+      ...config,
+      webhook_connected_at: null,
+      webhook_last_event: null,
+    }
+    codeAnalysisConfigs = { ...codeAnalysisConfigs, [projectId]: rotated }
+    return { ...rotated, webhook_secret: secret }
   },
   async verifyCodeAnalysisConfig(projectId: string): Promise<CodeAnalysisConfig> {
     await delay()
