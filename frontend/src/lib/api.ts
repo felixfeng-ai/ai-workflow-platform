@@ -5,6 +5,10 @@ import type {
   AuthResponse,
   CopilotEvent,
   CopilotMessage,
+  CodeAnalysisConfig,
+  CodeAnalysisConfigCreated,
+  CodeAnalysisRun,
+  CodeAnalysisRunSummary,
   CustomAgentRead,
   DeployRun,
   Doc,
@@ -122,6 +126,29 @@ async function upload<T>(path: string, file: File): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function downloadBlob(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {}
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${BASE}${path}`, { headers })
+  if (res.status === 401) {
+    clearSession()
+    window.location.reload()
+    throw new ApiError(401, '登录已过期')
+  }
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const j = await res.json()
+      detail = j.detail ?? JSON.stringify(j)
+    } catch {
+      /* keep default */
+    }
+    throw new ApiError(res.status, String(detail))
+  }
+  return res.blob()
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<AuthResponse>('POST', '/api/auth/login', { email, password }),
@@ -157,6 +184,54 @@ export const api = {
     request<DeployRun[]>('GET', `/api/projects/${projectId}/deployments?limit=${limit}`),
   getDeployment: (projectId: string, runId: string) =>
     request<DeployRun>('GET', `/api/projects/${projectId}/deployments/${runId}`),
+  // ---------- 代码提交分析 ----------
+  getCodeAnalysisConfig: (projectId: string) =>
+    request<CodeAnalysisConfig | null>('GET', `/api/projects/${projectId}/code-analysis/config`),
+  configureCodeAnalysis: (
+    projectId: string,
+    payload: {
+      repo_url: string
+      access_token: string
+      branch_patterns: string[]
+      enabled?: boolean
+    },
+  ) =>
+    request<CodeAnalysisConfigCreated>('POST', `/api/projects/${projectId}/code-analysis/config`, payload),
+  verifyCodeAnalysisConfig: (projectId: string) =>
+    request<CodeAnalysisConfig>('POST', `/api/projects/${projectId}/code-analysis/verify`),
+  deleteCodeAnalysisConfig: (projectId: string) =>
+    request<void>('DELETE', `/api/projects/${projectId}/code-analysis/config`),
+  listCodeAnalysisRuns: (
+    projectId: string,
+    opts?: {
+      page?: number
+      page_size?: number
+      keyword?: string
+      status?: string
+      branch?: string
+      date_from?: string
+      date_to?: string
+      severity?: string
+    },
+  ) => {
+    const q = new URLSearchParams()
+    q.set('page', String(opts?.page ?? 1))
+    q.set('page_size', String(opts?.page_size ?? 20))
+    if (opts?.keyword?.trim()) q.set('keyword', opts.keyword.trim())
+    if (opts?.status) q.set('status', opts.status)
+    if (opts?.branch?.trim()) q.set('branch', opts.branch.trim())
+    if (opts?.date_from) q.set('date_from', opts.date_from)
+    if (opts?.date_to) q.set('date_to', opts.date_to)
+    if (opts?.severity) q.set('severity', opts.severity)
+    return request<Paginated<CodeAnalysisRunSummary>>(
+      'GET',
+      `/api/projects/${projectId}/code-analysis/runs?${q}`,
+    )
+  },
+  getCodeAnalysisRun: (projectId: string, runId: string) =>
+    request<CodeAnalysisRun>('GET', `/api/projects/${projectId}/code-analysis/runs/${runId}`),
+  downloadCodeAnalysisDocx: (projectId: string, runId: string) =>
+    downloadBlob(`/api/projects/${projectId}/code-analysis/runs/${runId}/download.docx`),
   listTasks: (projectId?: string) =>
     request<Task[]>('GET', `/api/tasks${projectId ? `?project_id=${projectId}` : ''}`),
   createTask: (t: { project_id: string; title: string; priority?: string; description?: string; status?: string }) =>

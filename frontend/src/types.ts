@@ -29,6 +29,140 @@ export interface DeployRun {
   updated_at: string
 }
 
+// ---------- 代码提交分析（V1） ----------
+
+export interface CodeAnalysisConfig {
+  id: string
+  project_id: string
+  provider: string
+  repo_full_name: string
+  default_branch: string
+  branch_patterns: string[]
+  enabled: boolean
+  webhook_path: string
+  last_verified_at: string | null
+  last_error: string | null
+}
+
+export interface CodeAnalysisConfigCreated extends CodeAnalysisConfig {
+  webhook_secret: string
+}
+
+export type CodeAnalysisStatus = 'pending' | 'running' | 'succeeded' | 'partial' | 'failed'
+
+export interface CodeAnalysisRunSummary {
+  id: string
+  project_id: string
+  repo_full_name: string
+  branch: string
+  before_sha: string
+  after_sha: string
+  pusher_login: string | null
+  head_commit_message: string | null
+  status: CodeAnalysisStatus
+  change_stats: CodeAnalysisChangeScale | null
+  max_severity: string
+  finding_count: number
+  truncated: boolean
+  error: string | null
+  created_at: string
+}
+
+export interface CodeAnalysisChangeScale {
+  commits: number
+  files: number
+  additions: number
+  deletions: number
+  languages: Record<string, number>
+  statuses: Record<string, number>
+  truncated: boolean
+}
+
+export interface CodeAnalysisCommit {
+  sha: string
+  message: string
+  author: string
+}
+
+export interface CodeAnalysisFunctionalPoint {
+  title: string
+  description: string
+  files: string[]
+  confidence: string
+  evidence?: string[]
+}
+
+export interface CodeAnalysisBoundary {
+  module: string
+  boundary_type: string
+  description: string
+  evidence: string[]
+  confidence: string
+}
+
+export interface CodeAnalysisStateItem {
+  area: string
+  mechanism: string
+  risk: string
+  evidence: string[]
+  confidence: string
+}
+
+export interface CodeAnalysisSecurityFinding {
+  severity: string
+  category: string
+  title: string
+  file?: string
+  line?: number
+  source: string
+  evidence: string
+  recommendation: string
+  confidence: string
+  rule_id?: string
+}
+
+export interface CodeAnalysisReport {
+  schema_version: string
+  repo_full_name: string
+  branch: string
+  before_sha: string
+  after_sha: string
+  summary: string
+  change_scale: CodeAnalysisChangeScale
+  commits: CodeAnalysisCommit[]
+  functional_points: CodeAnalysisFunctionalPoint[]
+  modules: string[]
+  boundaries: CodeAnalysisBoundary[]
+  state_management: CodeAnalysisStateItem[]
+  data_structures: string[]
+  impact: {
+    direct: string[]
+    indirect: string[]
+    external_contracts: string[]
+    test_gaps: string[]
+  }
+  security_scans: Record<string, string>
+  security_findings: CodeAnalysisSecurityFinding[]
+  test_gaps: string[]
+  review_checklist: string[]
+  unknowns: string[]
+  limitations: string[]
+}
+
+export interface CodeAnalysisRun extends CodeAnalysisRunSummary {
+  connection_id: string
+  trigger_type: string
+  /** 仅演示模式用于前端过滤，真实详情接口不返回该内部字段。 */
+  search_text?: string
+  report: CodeAnalysisReport | null
+  report_markdown: string | null
+  analysis_version: string
+  ai_provider: string | null
+  ai_model: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
 export interface Task {
   id: string
   project_id: string
@@ -282,7 +416,13 @@ export interface ScanResult {
 
 // ---------- 站内通知（Notification Center） ----------
 
-export type NotificationType = 'agent_run' | 'workflow_run' | 'team' | 'knowledge' | 'due_reminder'
+export type NotificationType =
+  | 'agent_run'
+  | 'workflow_run'
+  | 'team'
+  | 'knowledge'
+  | 'due_reminder'
+  | 'code_analysis'
 
 export interface Notification {
   id: string

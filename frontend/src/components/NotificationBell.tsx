@@ -13,6 +13,7 @@ const TYPE_TONE: Record<NotificationType, BadgeTone> = {
   team: 'gold',
   knowledge: 'success',
   due_reminder: 'warning',
+  code_analysis: 'info',
 }
 const TYPE_LABEL: Record<NotificationType, string> = {
   agent_run: 'Agent',
@@ -20,6 +21,7 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   team: '团队',
   knowledge: '知识库',
   due_reminder: '到期',
+  code_analysis: '代码分析',
 }
 
 interface NotificationBellProps {

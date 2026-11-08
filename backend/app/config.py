@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     jwt_secret: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
+    # 代码分析凭据加密。生产环境必须显式配置；默认值只用于本地开发与测试。
+    app_encryption_key: str = "dev-encryption-key-change-me"
     dify_api_url: str = "http://localhost:5001/v1"
     dify_api_key: str = ""
     # AI 引擎选择：dify（Dify CE headless）| openai_compatible（DeepSeek/通义等）
@@ -48,6 +50,13 @@ class Settings(BaseSettings):
     github_deploy_token: str = ""
     # GitHub API 基址。独立成配置项是为了测试能指向 mock server。
     github_api_base: str = "https://api.github.com"
+    # 代码提交分析（V1）：只读取 compare 和仓库元数据，不复用部署 Token。
+    code_analysis_max_files: int = 50
+    code_analysis_max_patch_chars: int = 120_000
+    code_analysis_ai_max_chars: int = 60_000
+    code_analysis_ai_enabled: bool = True
+    code_analysis_timeout: float = 180
+    semgrep_command: str = "semgrep"
     # 微信小程序订阅消息（R16）
     wechat_appid: str = ""
     wechat_secret: str = ""

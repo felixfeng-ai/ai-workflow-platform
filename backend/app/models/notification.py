@@ -10,7 +10,7 @@ from .base import Base, TimestampMixin
 class Notification(Base, TimestampMixin):
     """站内通知：用户级收件箱，查询按 user_id（不按 tenant_id，被移出团队仍可见）。
 
-    type 枚举：agent_run|workflow_run|team|knowledge|due_reminder
+    type 枚举：agent_run|workflow_run|team|knowledge|due_reminder|code_analysis
     read_at 为空即未读；dedupe_key 供到期提醒按日历天幂等（同 user+task+day 只落一条）。
     """
 

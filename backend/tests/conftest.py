@@ -17,6 +17,7 @@ from app.agents.runner import agent_run_manager
 from app.db import SessionLocal, get_db
 from app.workflows.executor import workflow_run_manager
 from app.workflows.scheduler import workflow_scheduler
+from app.services.code_analysis.runner import code_analysis_run_manager
 from app.config import settings
 from app.main import app
 from app.models import Base
@@ -24,6 +25,7 @@ from app.models import Base
 # 测试套件默认关闭限流，避免并发/回归用例被 429 干扰。
 # tests/test_ratelimit.py 内用 monkeypatch 单独打开并 reset_limiter() 隔离。
 settings.ratelimit_enabled = False
+settings.code_analysis_ai_enabled = False
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -72,6 +74,7 @@ async def client():
     agent_run_manager.session_factory = factory
     workflow_run_manager.session_factory = factory
     workflow_scheduler.session_factory = factory
+    code_analysis_run_manager.session_factory = factory
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -79,9 +82,11 @@ async def client():
 
     await agent_run_manager.shutdown()
     await workflow_run_manager.shutdown()
+    await code_analysis_run_manager.shutdown()
     agent_run_manager.session_factory = original_session_factory
     workflow_run_manager.session_factory = SessionLocal
     workflow_scheduler.session_factory = SessionLocal
+    code_analysis_run_manager.session_factory = SessionLocal
     app.dependency_overrides.clear()
     app.state.test_session_factory = None
     await engine.dispose()

@@ -8,7 +8,9 @@ from .api import (
     agents,
     ai,
     auth,
+    code_analysis,
     docs,
+    github_webhooks,
     health,
     knowledge,
     notes,
@@ -25,6 +27,9 @@ from .config import settings
 from .writing.router import router as writing_router
 from .workflows.executor import workflow_run_manager
 from .workflows.scheduler import workflow_scheduler
+from .services.code_analysis.runner import code_analysis_run_manager
+from .services.code_analysis.backfill import backfill_code_analysis_metadata
+from .db import SessionLocal
 
 
 @asynccontextmanager
@@ -32,10 +37,14 @@ async def lifespan(_app: FastAPI):
     """应用生命周期：启动 APScheduler 并加载定时工作流；退出时回收后台任务。"""
     workflow_scheduler.start()
     await workflow_scheduler.load_all()
+    async with SessionLocal() as db:
+        await backfill_code_analysis_metadata(db)
+        await db.commit()
     yield
     workflow_scheduler.shutdown()
     await agent_run_manager.shutdown()
     await workflow_run_manager.shutdown()
+    await code_analysis_run_manager.shutdown()
 
 # 数据库 Schema 由 Alembic 迁移管理（容器入口/部署脚本执行 `alembic upgrade head`），
 # 不再在启动时 create_all，避免与迁移漂移。
@@ -52,6 +61,8 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(projects.router)
+app.include_router(code_analysis.router)
+app.include_router(github_webhooks.router)
 app.include_router(tasks.router)
 app.include_router(notes.router)
 app.include_router(docs.router)

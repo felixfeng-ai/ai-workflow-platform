@@ -9,7 +9,7 @@ class NotificationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    type: str  # agent_run|workflow_run|team|knowledge|due_reminder
+    type: str  # agent_run|workflow_run|team|knowledge|due_reminder|code_analysis
     title: str
     body: str | None
     ref_id: str | None
