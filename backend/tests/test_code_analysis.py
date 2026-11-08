@@ -259,6 +259,41 @@ async def test_webhook_rejects_invalid_signature(
     assert r.status_code == 401
 
 
+async def test_ping_marks_webhook_as_connected(
+    client, auth_headers, monkeypatch
+):
+    import app.api.code_analysis as code_analysis_api
+
+    monkeypatch.setattr(code_analysis_api, "GitHubClient", FakeGitHubClient)
+    project = (
+        await client.post("/api/projects", headers=auth_headers, json={"name": "Ping 项目"})
+    ).json()
+    config = (await _configure(client, auth_headers, project["id"])).json()
+    body = json.dumps({"zen": "Keep it logically awesome."})
+    signature = hmac.new(
+        config["webhook_secret"].encode(), body.encode(), hashlib.sha256
+    ).hexdigest()
+
+    ping = await client.post(
+        config["webhook_path"],
+        content=body,
+        headers={
+            "X-GitHub-Event": "ping",
+            "X-GitHub-Delivery": "delivery-ping",
+            "X-Hub-Signature-256": f"sha256={signature}",
+            "Content-Type": "application/json",
+        },
+    )
+    assert ping.status_code == 200
+
+    read = await client.get(
+        f"/api/projects/{project['id']}/code-analysis/config", headers=auth_headers
+    )
+    assert read.status_code == 200
+    assert read.json()["webhook_connected_at"] is not None
+    assert read.json()["webhook_last_event"] == "ping"
+
+
 async def test_push_webhook_creates_report_and_notification(
     client, auth_headers, monkeypatch
 ):
@@ -291,6 +326,10 @@ async def test_push_webhook_creates_report_and_notification(
     assert any(f["source"] == "secret_scan" for f in report["security_findings"])
     assert run["max_severity"] == "high"
     assert run["finding_count"] >= 1
+    connection_read = await client.get(
+        f"/api/projects/{project['id']}/code-analysis/config", headers=auth_headers
+    )
+    assert connection_read.json()["webhook_last_event"] == "push"
     assert "summary" in report
     assert "functional_points" in report
     assert "state_management" in report

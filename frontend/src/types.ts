@@ -41,6 +41,8 @@ export interface CodeAnalysisConfig {
   enabled: boolean
   webhook_path: string
   last_verified_at: string | null
+  webhook_connected_at: string | null
+  webhook_last_event: string | null
   last_error: string | null
 }
 

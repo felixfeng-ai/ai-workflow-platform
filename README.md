@@ -98,7 +98,7 @@ backend/                 FastAPI 服务
   app/llm/               LangGraph 接缝（AiEngine→BaseChatModel 门面、SQLAlchemy Checkpointer）
   app/ai/                AI 引擎适配层（dify / openai_compatible 统一接口）
   alembic/               数据库迁移（建表的唯一来源）
-  tests/                 26 个测试文件 / 318 个用例
+  tests/                 26 个测试文件 / 319 个用例
 frontend/                React SPA
   src/pages/             页面：Dashboard / Project / Agents / Workflows / Team / Login / Knowledge ...
   src/components/        组件：Shell / KanbanBoard / AiPanel / workflow 画布 ...
@@ -321,5 +321,5 @@ flowchart TD
 ## 工程状态
 
 - 后端 117 个文件 / 8,562 行，前端 50 个文件 / 8,651 行
-- 26 个测试文件 / 318 个用例，CI 双跑：内存 SQLite 单测 + 真实 PostgreSQL 集成测试（走迁移）
+- 26 个测试文件 / 319 个用例，CI 双跑：内存 SQLite 单测 + 真实 PostgreSQL 集成测试（走迁移）
 - CI 每次推送跑后端测试与前端构建；`main` 分支自动部署生产

@@ -20,6 +20,8 @@ class CodeAnalysisConfigRead(BaseModel):
     enabled: bool
     webhook_path: str
     last_verified_at: datetime | None
+    webhook_connected_at: datetime | None
+    webhook_last_event: str | None
     last_error: str | None
 
     model_config = ConfigDict(from_attributes=True)
