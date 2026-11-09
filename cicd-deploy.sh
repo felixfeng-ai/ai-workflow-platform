@@ -9,7 +9,8 @@
 # 前置条件（首次部署手动完成，见 DEPLOYMENT.md）：
 #   - Docker Engine + docker compose plugin 已安装
 #   - 仓库已 clone 到 /opt/projecthub-ai
-#   - /opt/projecthub-ai/.env 已按 .env.example 配置（本脚本不碰 .env）
+#   - /opt/projecthub-ai/.env 已按 .env.example 配置
+#   - 部署流水线提供 PROJECTHUB_GITHUB_DEPLOY_TOKEN 时，脚本会同步平台级部署 Token
 #
 # 回滚：git reset --hard <上一提交> && bash cicd-deploy.sh
 # ════════════════════════════════════════════════════════════════
@@ -65,6 +66,28 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
 fi
 
 cd "$PROJECT_DIR"
+
+# 平台级 GitHub 部署凭据由 GitHub Actions Secret 注入，用户无需为每个项目手工配置。
+# 只更新 .env 中的单个键，不打印 Token。
+if [ -n "${PROJECTHUB_GITHUB_DEPLOY_TOKEN:-}" ]; then
+    print_info "同步平台级 GitHub 部署凭据..."
+    TMP_ENV=$(mktemp)
+    awk -v token="$PROJECTHUB_GITHUB_DEPLOY_TOKEN" '
+        BEGIN { found = 0 }
+        /^GITHUB_DEPLOY_TOKEN=/ {
+            print "GITHUB_DEPLOY_TOKEN=" token
+            found = 1
+            next
+        }
+        { print }
+        END {
+            if (!found) print "GITHUB_DEPLOY_TOKEN=" token
+        }
+    ' "$PROJECT_DIR/.env" > "$TMP_ENV"
+    mv "$TMP_ENV" "$PROJECT_DIR/.env"
+    chmod 600 "$PROJECT_DIR/.env"
+    print_ok "平台级 GitHub 部署凭据已更新"
+fi
 
 # ════════════════════════════════════════════════════════════════
 # 第二步：拉取最新代码（5 次重试）
