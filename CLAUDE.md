@@ -47,7 +47,7 @@ VeyaWork 雅秩 —— AI 原生工作台（FastAPI + React + Taro 小程序）�
 
 - **只跑增量测试**：改哪测哪（`pytest tests/test_xxx.py`），不要每次跑全量
 - 新功能沿用 TDD：先写失败测试再实现
-- 测试基线：26 个文件 / 320 个用例，见 CI 双跑（内存 SQLite 单测 + 真实 PostgreSQL 集成测试）
+- 测试基线：26 个文件 / 327 个用例，见 CI 双跑（内存 SQLite 单测 + 真实 PostgreSQL 集成测试）
 
 ---
 

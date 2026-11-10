@@ -191,6 +191,7 @@ export const api = {
     projectId: string,
     payload: {
       repo_url: string
+      source_path?: string
       access_token: string
       branch_patterns: string[]
       enabled?: boolean

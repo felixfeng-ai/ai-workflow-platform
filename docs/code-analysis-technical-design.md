@@ -154,6 +154,7 @@ class GitHubRepoAuth(Protocol):
 管理员在项目设置中填写：
 
 - GitHub 仓库 URL。
+- 可选代码目录（`source_path`）。
 - 访问 Token。
 - 分析分支规则。
 - 是否启用自动分析。
@@ -166,6 +167,17 @@ class GitHubRepoAuth(Protocol):
 - Token 具备读取代码的权限。
 
 验证通过后由服务端生成 Webhook Secret。Secret 只在创建时展示一次，加密保存。
+
+仓库地址兼容根地址、目录页、文件页和提交页：
+
+- 根地址：按仓库根目录分析。
+- `/tree/<branch>/<path>`：分析 `<path>` 子树。
+- `/blob/<branch>/<path>/<file>`：分析文件所在目录。
+- `/commit/<sha>`：按仓库根目录分析。
+
+服务端拿到默认分支后解析目录，避免把带斜杠的分支名误当成目录。
+显式 `source_path` 优先于链接解析，统一转为 Posix 相对路径，并拒绝
+`..`、空字符等路径穿越输入。重新配置时由当前地址重新计算，不保留旧目录。
 
 ### 5.3 Webhook 端点
 
@@ -221,6 +233,7 @@ POST /api/integrations/github/{connection_id}/webhook
 | `auth_type` | String(20) | `pat` / `app` |
 | `repository_id` | BigInteger | GitHub 稳定仓库 ID |
 | `repo_full_name` | String(200) | `owner/repo` |
+| `source_path` | String(300) nullable | 仓库内代码目录；null 表示根目录 |
 | `default_branch` | String(120) | 默认分支 |
 | `branch_patterns` | JSON | 分析分支规则 |
 | `webhook_secret_encrypted` | Text | Webhook Secret |
@@ -353,6 +366,8 @@ class ChangedFile:
 
 过滤规则：
 
+- 配置了 `source_path` 时，只保留该目录自身及子目录中的文件。
+- `node_modules`、`dist` 等忽略规则按代码目录内的相对路径判断。
 - 锁文件：`package-lock.json`、`pnpm-lock.yaml`、`poetry.lock` 等。
 - 生成产物：`dist/`、`build/`、`coverage/`、压缩文件。
 - 二进制文件。
@@ -621,6 +636,7 @@ backend/app/
 由项目 owner 配置：
 
 - GitHub 仓库地址。
+- 可选代码目录；粘贴目录页链接时自动识别。
 - Token。
 - Webhook URL 和 Secret。
 - 分支规则。

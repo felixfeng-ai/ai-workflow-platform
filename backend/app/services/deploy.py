@@ -62,7 +62,8 @@ MAX_REPO_FULL_NAME = 200
 # 都会被拼进带部署 PAT 的上游 URL，放开就有 ? # % 这类字符混进来改写路径/查询。
 # owner 必须以字母数字开头，这一条同时排除了 "." 和 ".."。
 _GITHUB_REPO_RE = re.compile(
-    r"^https?://(?:www\.)?github\.com/([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9._-]+?)(?:\.git)?/?$",
+    r"^https?://(?:www\.)?github\.com/([A-Za-z0-9][A-Za-z0-9-]*)/"
+    r"([A-Za-z0-9._-]+?)(?:\.git)?(?:/[^?#\s]*)?/?$",
     re.IGNORECASE,
 )
 

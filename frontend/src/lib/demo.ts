@@ -132,6 +132,7 @@ let codeAnalysisConfigs: Record<string, CodeAnalysisConfig> = {
     project_id: 'p-3',
     provider: 'github',
     repo_full_name: 'Drir1203/ai-workflow-platform',
+    source_path: null,
     default_branch: 'main',
     branch_patterns: ['feature/*', 'fix/*'],
     enabled: true,
@@ -149,6 +150,7 @@ let demoWebhookSecrets: Record<string, string> = {
 const demoCodeAnalysisReport: CodeAnalysisReport = {
   schema_version: '1.0',
   repo_full_name: 'Drir1203/ai-workflow-platform',
+  source_path: null,
   branch: 'feature/code-analysis',
   before_sha: '1111111111111111111111111111111111111111',
   after_sha: '2222222222222222222222222222222222222222',
@@ -610,6 +612,7 @@ export const demoApi = {
     projectId: string,
     payload: {
       repo_url: string
+      source_path?: string
       access_token: string
       branch_patterns: string[]
       enabled?: boolean
@@ -617,16 +620,22 @@ export const demoApi = {
     },
   ): Promise<CodeAnalysisConfigCreated> {
     await delay()
-    const repo = payload.repo_url
-      .replace(/^https?:\/\/github\.com\//i, '')
-      .replace(/\.git$/i, '')
-      .replace(/\/$/, '')
+    const url = new URL(payload.repo_url)
+    const parts = url.pathname.split('/').filter(Boolean)
+    const repo = `${parts[0] ?? 'acme'}/${parts[1] ?? 'demo'}`
+    let sourcePath = payload.source_path?.trim().replace(/^\/+|\/+$/g, '') || null
+    if (!sourcePath && parts[2] === 'tree') {
+      sourcePath = parts.slice(4).join('/') || null
+    } else if (!sourcePath && parts[2] === 'blob') {
+      sourcePath = parts.slice(4, -1).join('/') || null
+    }
     const existing = codeAnalysisConfigs[projectId]
     const config: CodeAnalysisConfig = {
       id: existing?.id ?? `ca-${++cid}`,
       project_id: projectId,
       provider: 'github',
-      repo_full_name: repo || 'acme/demo',
+      repo_full_name: repo,
+      source_path: sourcePath,
       default_branch: 'main',
       branch_patterns: payload.branch_patterns,
       enabled: payload.enabled ?? true,

@@ -435,6 +435,15 @@ def test_parse_github_repo_rejects_dot_segments():
     """点段会被 httpx 在发送前归一化，从而改写上游路径 —— 必须挡住。"""
     assert deploy_service.parse_github_repo("https://github.com/acme/widget") == ("acme", "widget")
     assert deploy_service.parse_github_repo("https://github.com/acme/widget.git") == ("acme", "widget")
+    assert deploy_service.parse_github_repo(
+        "https://github.com/acme/widget/tree/main/backend/app"
+    ) == ("acme", "widget")
+    assert deploy_service.parse_github_repo(
+        "https://github.com/acme/widget/blob/main/README.md"
+    ) == ("acme", "widget")
+    assert deploy_service.parse_github_repo(
+        "https://github.com/acme/widget/commit/abc123"
+    ) == ("acme", "widget")
     for bad in (
         "https://github.com/../../x/y",
         "https://github.com/acme/..",

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class CodeAnalysisConfigCreate(BaseModel):
     repo_url: str = Field(min_length=1, max_length=300)
+    source_path: str | None = Field(default=None, max_length=300)
     access_token: str = Field(default="", max_length=500)
     branch_patterns: list[str] = Field(default_factory=lambda: ["feature/*", "fix/*"])
     enabled: bool = True
@@ -16,6 +17,7 @@ class CodeAnalysisConfigRead(BaseModel):
     project_id: str
     provider: str
     repo_full_name: str
+    source_path: str | None
     default_branch: str
     branch_patterns: list[str]
     enabled: bool

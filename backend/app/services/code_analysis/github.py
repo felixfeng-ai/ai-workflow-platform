@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import unquote, urlsplit
+
 import httpx
 
 from ...config import settings
@@ -10,6 +12,42 @@ GITHUB_TIMEOUT = 20.0
 
 class GitHubError(RuntimeError):
     pass
+
+
+def normalize_github_source_path(value: str | None) -> str | None:
+    """把用户填写的目录归一成仓库内 Posix 相对路径。"""
+    if not value or not value.strip():
+        return None
+    decoded = unquote(value.strip()).replace("\\", "/")
+    parts = [part for part in decoded.strip("/").split("/") if part not in {"", "."}]
+    if any(part == ".." or "\x00" in part for part in parts):
+        raise ValueError("代码目录不能包含 .. 或空字符")
+    return "/".join(parts) or None
+
+
+def parse_github_source_path(repo_url: str, default_branch: str) -> str | None:
+    """从 GitHub tree/blob 页面链接提取仓库内代码目录。
+
+    GitHub 链接不显式区分分支名和目录名；优先匹配仓库默认分支，
+    非默认分支的普通单段名称则按第一段处理。含斜杠的非默认分支可在
+    表单中显式填写目录，避免歧义。
+    """
+    parsed = urlsplit(repo_url.strip())
+    if (parsed.hostname or "").lower() not in {"github.com", "www.github.com"}:
+        return None
+    parts = [unquote(part) for part in parsed.path.split("/") if part]
+    if len(parts) < 4 or parts[2] not in {"tree", "blob"}:
+        return None
+
+    remainder = parts[3:]
+    branch_parts = [part for part in default_branch.strip("/").split("/") if part]
+    if branch_parts and remainder[: len(branch_parts)] == branch_parts:
+        remainder = remainder[len(branch_parts) :]
+    else:
+        remainder = remainder[1:]
+    if parts[2] == "blob" and remainder:
+        remainder = remainder[:-1]
+    return normalize_github_source_path("/".join(remainder))
 
 
 class GitHubClient:

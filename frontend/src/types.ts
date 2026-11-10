@@ -36,6 +36,7 @@ export interface CodeAnalysisConfig {
   project_id: string
   provider: string
   repo_full_name: string
+  source_path: string | null
   default_branch: string
   branch_patterns: string[]
   enabled: boolean
@@ -126,6 +127,7 @@ export interface CodeAnalysisSecurityFinding {
 export interface CodeAnalysisReport {
   schema_version: string
   repo_full_name: string
+  source_path?: string | null
   branch: string
   before_sha: string
   after_sha: string

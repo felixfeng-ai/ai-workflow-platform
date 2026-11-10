@@ -37,6 +37,7 @@ class ProjectRepoConnection(Base, TimestampMixin):
     auth_type: Mapped[str] = mapped_column(String(20), default="pat")
     repository_id: Mapped[int] = mapped_column(BigInteger)
     repo_full_name: Mapped[str] = mapped_column(String(200))
+    source_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
     default_branch: Mapped[str] = mapped_column(String(120), default="main")
     branch_patterns: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     webhook_secret_encrypted: Mapped[str] = mapped_column(Text)

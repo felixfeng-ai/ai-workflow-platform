@@ -84,6 +84,7 @@ def normalize_change_set(
     *,
     max_files: int,
     max_patch_chars: int,
+    source_path: str | None = None,
 ) -> tuple[dict, bool]:
     """把 GitHub compare 响应归一化为内部 ChangeSet。"""
     commits = []
@@ -100,9 +101,15 @@ def normalize_change_set(
     files = []
     truncated = False
     used_patch_chars = 0
+    scope = (source_path or "").strip("/")
     for item in payload.get("files") or []:
         path = str(item.get("filename") or "")
-        if not path or should_ignore(path):
+        if not path:
+            continue
+        if scope and path != scope and not path.startswith(f"{scope}/"):
+            continue
+        relative_path = path[len(scope) + 1 :] if path.startswith(f"{scope}/") else path
+        if should_ignore(relative_path):
             continue
         if len(files) >= max_files or used_patch_chars >= max_patch_chars:
             truncated = True
@@ -164,8 +171,10 @@ def scan_secrets(files: list[dict]) -> list[dict]:
     return findings
 
 
-def _module_of(path: str) -> str:
-    parts = PurePosixPath(path).parts
+def _module_of(path: str, source_path: str | None = None) -> str:
+    scope = (source_path or "").strip("/")
+    relative = path[len(scope) + 1 :] if scope and path.startswith(f"{scope}/") else path
+    parts = PurePosixPath(relative).parts
     if len(parts) >= 3 and parts[0] in {"backend", "frontend", "miniapp"}:
         return "/".join(parts[:3])
     return parts[0] if parts else "root"
@@ -184,11 +193,12 @@ def build_report(
     repo_full_name: str,
     semgrep_findings: list[dict] | None = None,
     semgrep_status: str = "unavailable",
+    source_path: str | None = None,
 ) -> dict:
     commits = change_set["commits"]
     files = change_set["files"]
     stats = change_set["stats"]
-    modules = sorted({_module_of(f["path"]) for f in files})
+    modules = sorted({_module_of(f["path"], source_path) for f in files})
 
     functional_points = [
         {
@@ -209,7 +219,7 @@ def build_report(
         if any(token in path for token in ("/api/", "/router", "/schema", "/contract")):
             boundaries.append(
                 {
-                    "module": _module_of(file["path"]),
+                    "module": _module_of(file["path"], source_path),
                     "boundary_type": "api",
                     "description": f"接口或契约文件发生 {file['status']} 变更",
                     "evidence": [file["path"]],
@@ -251,6 +261,7 @@ def build_report(
 
     security_findings = scan_secrets(files)
     security_findings.extend(semgrep_findings or [])
+    scope_prefix = f"代码目录 {source_path}：" if source_path else ""
 
     test_gaps = []
     if source_files and not test_files:
@@ -272,10 +283,12 @@ def build_report(
     report = {
         "schema_version": "1.0",
         "repo_full_name": repo_full_name,
+        "source_path": source_path,
         "branch": branch,
         "before_sha": before_sha,
         "after_sha": after_sha,
         "summary": (
+            f"{scope_prefix}"
             f"本次推送包含 {stats['commits']} 个提交、{stats['files']} 个文件，"
             f"新增 {stats['additions']} 行、删除 {stats['deletions']} 行。"
         ),
@@ -351,6 +364,7 @@ def build_search_text(report: dict) -> str:
     """把可搜索字段压成一段文本，避免列表查询解析 report JSON。"""
     parts: list[str] = [
         str(report.get("repo_full_name") or ""),
+        str(report.get("source_path") or ""),
         str(report.get("branch") or ""),
         str(report.get("before_sha") or ""),
         str(report.get("after_sha") or ""),
@@ -416,6 +430,8 @@ def render_markdown(report: dict) -> str:
         f"# 代码分析报告 · {report['branch']}",
         "",
         report["summary"],
+        "",
+        f"- 代码目录：{report['source_path']}" if report.get("source_path") else "- 代码目录：仓库根目录",
         "",
         "## 变更概览",
         "",
