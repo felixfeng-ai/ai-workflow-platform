@@ -4,7 +4,7 @@ import type { DataLayer } from '../lib/view'
 import type { DeployRun, Project } from '../types'
 
 // 触发后轮询的时间窗。GitHub Actions 一次真实部署常要几分钟，前端不等到底：
-// 超过这个窗口还没结束就停在「部署中」并给出 GitHub 链接，让用户自己去看。
+// 超过窗口后停止自动轮询，恢复「重新检查」入口并给出 GitHub 链接。
 // 注意这不是失败 —— 把它显示成失败是最容易撒的谎。
 const POLL_INTERVAL_MS = 5000
 const POLL_MAX_ATTEMPTS = 24
@@ -40,6 +40,7 @@ const STATUS_CLASS: Record<string, string> = {
 export function DeployButton({ project, layer }: { project: Project; layer: DataLayer }) {
   const [run, setRun] = useState<DeployRun | null>(null)
   const [busy, setBusy] = useState(false)
+  const [polling, setPolling] = useState(false)
   const [error, setError] = useState('')
   // 卸载后停止轮询：部署本身会在 GitHub 侧继续跑，前端没必要再打后端。
   // StrictMode 下开发模式会挂载两次，所以这里在 effect 里重新置 true。
@@ -58,7 +59,10 @@ export function DeployButton({ project, layer }: { project: Project; layer: Data
     layer
       .listDeployments(project.id, 1)
       .then((runs) => {
-        if (!cancelled && runs.length > 0) setRun(runs[0])
+        if (cancelled || runs.length === 0) return
+        const latest = runs[0]
+        setRun(latest)
+        if (!TERMINAL.has(latest.status)) void poll(latest.id)
       })
       // 读历史失败不影响主流程（用户仍可点部署），静默忽略
       .catch(() => undefined)
@@ -68,19 +72,27 @@ export function DeployButton({ project, layer }: { project: Project; layer: Data
   }, [layer, project.id])
 
   async function poll(runId: string) {
-    for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-      if (!alive.current) return
-      try {
+    if (!alive.current) return
+    setPolling(true)
+    setError('')
+    try {
+      for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+        if (!alive.current) return
         const latest = await layer.getDeployment(project.id, runId)
         if (!alive.current) return
         setRun(latest)
         if (TERMINAL.has(latest.status)) return
-      } catch (e) {
-        if (!alive.current) return
-        setError(e instanceof Error ? e.message : '状态查询失败')
-        return
       }
+      if (alive.current) {
+        setError('GitHub 暂未创建可关联的运行记录，请重新检查或打开 Actions 页面确认。')
+      }
+    } catch (e) {
+      if (alive.current) {
+        setError(e instanceof Error ? e.message : '状态查询失败')
+      }
+    } finally {
+      if (alive.current) setPolling(false)
     }
   }
 
@@ -100,7 +112,8 @@ export function DeployButton({ project, layer }: { project: Project; layer: Data
     }
   }
 
-  const running = run !== null && !TERMINAL.has(run.status)
+  const unfinished = run !== null && !TERMINAL.has(run.status)
+  const running = unfinished && polling
 
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -109,6 +122,10 @@ export function DeployButton({ project, layer }: { project: Project; layer: Data
         onClick={(e) => {
           // 卡片整体可点（点击进入项目详情），这里必须拦住冒泡，否则点部署会跳页
           e.stopPropagation()
+          if (run && !TERMINAL.has(run.status)) {
+            void poll(run.id)
+            return
+          }
           trigger()
         }}
         disabled={busy || running}
@@ -117,12 +134,16 @@ export function DeployButton({ project, layer }: { project: Project; layer: Data
       >
         {busy || running ? (
           <Spinner className="h-2.5 w-2.5" />
+        ) : unfinished ? (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         ) : (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
-        {running ? '部署中' : '部署'}
+        {running || busy ? '部署中' : unfinished ? '重新检查' : '部署'}
       </button>
 
       {run && (

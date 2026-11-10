@@ -40,11 +40,10 @@ DEFAULT_DEPLOY_REF = "main"
 # 若不算终态，前端每次轮询都会重新打 GitHub，永远查不到也永远不罢休。
 TERMINAL_STATUSES = frozenset({"success", "failure", "cancelled", "unknown"})
 # 触发后「认领」这次 run 的时限。workflow_dispatch 只回 204 不给 run id，
-# 我们靠回查该 workflow 的最近一次 run 来认领。超过这个时间还认领不到，
-# 基本可判定这次触发没有真的产生 run（workflow 没声明 workflow_dispatch
-# 却没被 GitHub 拦成 422、或触发被静默丢弃），此时继续回查纯属白烧配额。
-# 只对「还没认领到」的 run 生效；已认领的 in_progress run 会自然跑完，不设上限
-SYNC_STALE_AFTER = timedelta(minutes=30)
+# 我们靠回查该 workflow 最近的 workflow_dispatch run 来认领。GitHub 正常会在
+# 几秒内建好 run；90 秒还看不到，基本可判定请求没有真正生成运行记录。此时必须
+# 停止排队，否则前端会永久转圈并锁住部署按钮。
+SYNC_STALE_AFTER = timedelta(seconds=90)
 # 回查「最近一次 run」时允许的时间倒推量：本机与 GitHub 的时钟有偏差，
 # 且 run 创建时刻可能略早于我们收到 204 的时刻。部署是低频手动操作，
 # 放宽窗口比精确匹配更实用（宁可认领到刚好并发的那一次，也不要永远认领不到）
@@ -211,9 +210,11 @@ async def trigger_deploy(db: AsyncSession, project: Project, user: User) -> Depl
         run.status = "failure"
         run.error = _extract_error(resp)
     else:
-        # 202/204 都表示已受理。run_url 暂时给仓库的 Actions 页面，
+        # 202/204 都表示已受理。run_url 先指向该 workflow 的 Actions 列表，
         # 等 sync 拿到 run id 后替换成精确链接
-        run.run_url = f"https://github.com/{repo_full_name}/actions"
+        run.run_url = (
+            f"https://github.com/{repo_full_name}/actions/workflows/{workflow}"
+        )
 
     db.add(run)
     await db.commit()
@@ -237,7 +238,10 @@ async def sync_deploy_run(db: AsyncSession, run: DeployRun) -> DeployRun:
     # 我们确实不知道它是成功还是失败，「没能确认」才是事实
     if run.github_run_id is None and _is_past_deadline(run.created_at, SYNC_STALE_AFTER):
         run.status = "unknown"
-        run.error = "未能在 GitHub 上找到这次部署对应的运行记录，无法确认结果"
+        run.error = (
+            "GitHub 已接受触发请求，但未创建可关联的 workflow_dispatch 运行记录。"
+            "请打开 Actions 页面检查 workflow 是否启用。"
+        )
         await db.commit()
         await db.refresh(run)
         return run
@@ -250,7 +254,7 @@ async def sync_deploy_run(db: AsyncSession, run: DeployRun) -> DeployRun:
                 listed = await client.get(
                     f"{base}/workflows/{run.workflow}/runs",
                     headers=_headers(),
-                    params={"per_page": 1},
+                    params={"per_page": 10, "event": "workflow_dispatch"},
                 )
                 if listed.status_code != 200:
                     run.error = _extract_error(listed)
@@ -261,7 +265,16 @@ async def sync_deploy_run(db: AsyncSession, run: DeployRun) -> DeployRun:
                 if not runs:
                     # 刚触发、GitHub 侧还没建好 run。保持 queued 等下次
                     return run
-                candidate = runs[0]
+                candidate = next(
+                    (
+                        item
+                        for item in runs
+                        if item.get("event") == "workflow_dispatch"
+                    ),
+                    None,
+                )
+                if candidate is None:
+                    return run
                 created_at = candidate.get("created_at")
                 if created_at and not _is_recent(created_at, run.created_at):
                     # 最近一次 run 早于本次触发太多 —— 说明我们这条还没出现，
