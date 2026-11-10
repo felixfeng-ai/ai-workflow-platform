@@ -261,6 +261,9 @@ def build_code_analysis_docx(
         ],
         widths=[1.25, 2.0, 1.45, 2.0],
     )
+    scope = doc.add_paragraph()
+    _style_paragraph(scope, after=4)
+    _add_text(scope, f"代码目录：{report.get('source_path') or '仓库根目录'}", size=9.5)
     meta = doc.add_paragraph()
     _style_paragraph(meta, after=8)
     _add_text(meta, f"报告状态：{status}    生成时间：{created}", size=9.5)

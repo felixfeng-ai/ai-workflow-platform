@@ -24,7 +24,12 @@ from ..schemas.code_analysis import (
     CodeAnalysisRunRead,
     CodeAnalysisRunSummary,
 )
-from ..services.code_analysis.github import GitHubClient, GitHubError
+from ..services.code_analysis.github import (
+    GitHubClient,
+    GitHubError,
+    normalize_github_source_path,
+    parse_github_source_path,
+)
 from ..services.code_analysis.docx_export import build_code_analysis_docx
 from ..services.code_analysis.runner import code_analysis_run_manager
 from ..services.deploy import parse_github_repo
@@ -53,6 +58,7 @@ def _config_read(connection: ProjectRepoConnection) -> CodeAnalysisConfigRead:
         project_id=connection.project_id,
         provider=connection.provider,
         repo_full_name=connection.repo_full_name,
+        source_path=connection.source_path,
         default_branch=connection.default_branch,
         branch_patterns=connection.branch_patterns or [],
         enabled=connection.enabled,
@@ -78,7 +84,10 @@ async def configure_code_analysis(
     project = await _get_project(db, user, project_id)
     parsed_repo = parse_github_repo(payload.repo_url)
     if parsed_repo is None:
-        raise HTTPException(status_code=400, detail="请输入合法的 GitHub 仓库地址")
+        raise HTTPException(
+            status_code=400,
+            detail="请输入 GitHub 仓库地址，可直接粘贴目录、文件或提交页面链接",
+        )
     repo_full_name = f"{parsed_repo[0]}/{parsed_repo[1]}"
 
     patterns = [item.strip() for item in payload.branch_patterns if item.strip()]
@@ -96,6 +105,14 @@ async def configure_code_analysis(
     default_branch = repository.get("default_branch") or "main"
     if not isinstance(repository_id, int):
         raise HTTPException(status_code=400, detail="GitHub 仓库元数据缺少 repository id")
+    try:
+        source_path = (
+            normalize_github_source_path(payload.source_path)
+            if payload.source_path and payload.source_path.strip()
+            else parse_github_source_path(payload.repo_url, default_branch)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     existing = (
         await db.execute(
@@ -137,6 +154,7 @@ async def configure_code_analysis(
     )
     connection.repository_id = repository_id
     connection.repo_full_name = verified_full_name
+    connection.source_path = source_path
     connection.default_branch = default_branch
     connection.branch_patterns = patterns
     if webhook_secret:

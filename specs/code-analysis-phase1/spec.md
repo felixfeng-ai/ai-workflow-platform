@@ -9,7 +9,7 @@
 
 ### Requirement
 
-项目 owner 可以配置 GitHub 仓库、访问 Token、Webhook Secret 和分支规则。
+项目 owner 可以配置 GitHub 仓库、可选代码目录、访问 Token、Webhook Secret 和分支规则。
 
 ### Scenario 1.1：成功创建连接
 
@@ -48,6 +48,24 @@
 - When owner 修改仓库或分支配置并保存
 - Then 原 Webhook Secret 保持不变
 - And 只有显式点击“重新生成 Secret”时才轮换
+
+### Scenario 1.1e：仓库内层代码目录
+
+- Given 代码位于 GitHub 仓库的内层目录
+- When owner 粘贴仓库根地址、目录页链接、文件页链接或提交页链接
+- Then 系统从链接中解析仓库
+- And 对目录页和文件页解析对应代码目录
+- And 提交页按仓库根目录处理
+- And 显式填写的代码目录经过路径校验后优先使用
+- And 重新配置时按当前地址重新计算目录，不沿用已失效的旧目录
+- And 页面摘要和报告详情展示当前分析目录
+
+### Scenario 1.1f：非法代码目录
+
+- Given owner 填写包含 `..`、空字符或非法编码的代码目录
+- When 保存仓库配置
+- Then 返回 400
+- And 不保存仓库连接
 
 ### Scenario 1.2：非 owner 禁止配置
 
@@ -121,6 +139,15 @@
 - When 分析任务执行
 - Then 只分析优先文件
 - And 报告标记 `truncated=true`
+
+### Scenario 3.4：按代码目录分析
+
+- Given 项目配置了仓库内层代码目录
+- When GitHub Compare API 返回仓库内全部文件
+- Then 系统只保留该目录及其子目录中的文件
+- And 变更量、语言分布、模块、安全扫描和测试缺口均基于过滤后的文件
+- And 内层 `node_modules`、`dist` 等忽略规则仍按目录内相对路径生效
+- And 报告记录 `source_path`，DOCX 的“报告范围”展示代码目录
 
 ## 能力点 4：结构化分析报告
 

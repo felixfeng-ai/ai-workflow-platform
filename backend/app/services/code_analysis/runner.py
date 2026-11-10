@@ -78,6 +78,7 @@ class CodeAnalysisRunManager:
                     payload,
                     max_files=settings.code_analysis_max_files,
                     max_patch_chars=settings.code_analysis_max_patch_chars,
+                    source_path=connection.source_path,
                 )
                 semgrep_findings, semgrep_status = await run_semgrep(change_set["files"])
                 report = build_report(
@@ -88,6 +89,7 @@ class CodeAnalysisRunManager:
                     repo_full_name=run.repo_full_name,
                     semgrep_findings=semgrep_findings,
                     semgrep_status=semgrep_status,
+                    source_path=connection.source_path,
                 )
 
                 ai, provider, model = await enrich_with_ai(

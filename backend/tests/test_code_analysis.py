@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from uuid import uuid4
 
+import pytest
 from docx import Document
 from sqlalchemy import select
 
@@ -181,6 +182,208 @@ async def test_configure_public_repository_without_token(client, auth_headers, m
     )
     assert response.status_code == 201
     assert response.json()["repo_full_name"] == "pypa/sampleproject"
+
+
+async def test_configure_accepts_github_directory_page_url(
+    client, auth_headers, monkeypatch
+):
+    import app.api.code_analysis as code_analysis_api
+
+    monkeypatch.setattr(code_analysis_api, "GitHubClient", FakeGitHubClient)
+    project = (
+        await client.post("/api/projects", headers=auth_headers, json={"name": "目录 URL 项目"})
+    ).json()
+    response = await client.post(
+        f"/api/projects/{project['id']}/code-analysis/config",
+        headers=auth_headers,
+        json={
+            "repo_url": "https://github.com/felixfeng-ai/crossborder-ai/tree/main/crossborder-ai",
+            "access_token": "",
+            "branch_patterns": ["*"],
+            "enabled": True,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["repo_full_name"] == "felixfeng-ai/crossborder-ai"
+    assert response.json()["source_path"] == "crossborder-ai"
+
+
+def test_normalize_change_set_filters_source_subdirectory():
+    from app.services.code_analysis.report import normalize_change_set
+
+    changes, truncated = normalize_change_set(
+        {
+            "commits": [],
+            "files": [
+                {
+                    "filename": "README.md",
+                    "status": "modified",
+                    "additions": 2,
+                    "deletions": 0,
+                    "patch": "@@ -0,0 +1,2 @@\n+root\n+change",
+                },
+                {
+                    "filename": "crossborder-ai/backend/app.py",
+                    "status": "modified",
+                    "additions": 3,
+                    "deletions": 1,
+                    "patch": "@@ -1 +1,3 @@\n-old\n+new\n+more",
+                },
+                {
+                    "filename": "crossborder-ai-extra/outside.py",
+                    "status": "modified",
+                    "additions": 1,
+                    "deletions": 0,
+                    "patch": "@@ -0,0 +1 @@\n+outside",
+                },
+                {
+                    "filename": "crossborder-ai/node_modules/pkg/index.js",
+                    "status": "modified",
+                    "additions": 1,
+                    "deletions": 0,
+                    "patch": "@@ -0,0 +1 @@\n+ignored",
+                },
+            ],
+        },
+        max_files=10,
+        max_patch_chars=10_000,
+        source_path="crossborder-ai",
+    )
+    assert [item["path"] for item in changes["files"]] == [
+        "crossborder-ai/backend/app.py"
+    ]
+    assert changes["stats"]["files"] == 1
+    assert truncated is False
+
+
+def test_parse_github_source_path_from_tree_blob_and_commit_urls():
+    from app.services.code_analysis.github import parse_github_source_path
+
+    assert (
+        parse_github_source_path(
+            "https://github.com/felixfeng-ai/crossborder-ai/tree/main/crossborder-ai",
+            "main",
+        )
+        == "crossborder-ai"
+    )
+    assert (
+        parse_github_source_path(
+            "https://github.com/acme/monorepo/blob/main/apps/api/src/main.py",
+            "main",
+        )
+        == "apps/api/src"
+    )
+    assert (
+        parse_github_source_path(
+            "https://github.com/acme/monorepo/tree/feature/nested/apps/api",
+            "feature/nested",
+        )
+        == "apps/api"
+    )
+    assert (
+        parse_github_source_path(
+            "https://github.com/acme/monorepo/commit/abcdef123456",
+            "main",
+        )
+        is None
+    )
+
+
+def test_parse_github_source_path_rejects_path_traversal():
+    from app.services.code_analysis.github import parse_github_source_path
+
+    with pytest.raises(ValueError):
+        parse_github_source_path(
+            "https://github.com/acme/monorepo/tree/main/apps/%2E%2E/secrets",
+            "main",
+        )
+
+
+async def test_configure_rejects_invalid_explicit_source_path(
+    client, auth_headers, monkeypatch
+):
+    import app.api.code_analysis as code_analysis_api
+
+    monkeypatch.setattr(code_analysis_api, "GitHubClient", FakeGitHubClient)
+    project = (
+        await client.post("/api/projects", headers=auth_headers, json={"name": "目录项目"})
+    ).json()
+    response = await client.post(
+        f"/api/projects/{project['id']}/code-analysis/config",
+        headers=auth_headers,
+        json={
+            "repo_url": "https://github.com/acme/demo",
+            "source_path": "../secrets",
+            "access_token": "",
+            "branch_patterns": ["*"],
+            "enabled": True,
+        },
+    )
+    assert response.status_code == 400
+
+
+async def test_reconfigure_uses_current_url_scope(client, auth_headers, monkeypatch):
+    import app.api.code_analysis as code_analysis_api
+
+    monkeypatch.setattr(code_analysis_api, "GitHubClient", FakeGitHubClient)
+    project = (
+        await client.post("/api/projects", headers=auth_headers, json={"name": "范围项目"})
+    ).json()
+    first = await client.post(
+        f"/api/projects/{project['id']}/code-analysis/config",
+        headers=auth_headers,
+        json={
+            "repo_url": "https://github.com/acme/demo/tree/main/packages/api",
+            "access_token": "",
+            "branch_patterns": ["*"],
+            "enabled": True,
+        },
+    )
+    assert first.json()["source_path"] == "packages/api"
+
+    second = await client.post(
+        f"/api/projects/{project['id']}/code-analysis/config",
+        headers=auth_headers,
+        json={
+            "repo_url": "https://github.com/acme/demo",
+            "access_token": "",
+            "branch_patterns": ["*"],
+            "enabled": True,
+        },
+    )
+    assert second.json()["source_path"] is None
+
+
+def test_build_report_marks_source_directory():
+    from app.services.code_analysis.report import build_report, normalize_change_set
+
+    changes, _ = normalize_change_set(
+        {
+            "commits": [{"sha": "a" * 40, "commit": {"message": "feat: scoped"}}],
+            "files": [
+                {
+                    "filename": "crossborder-ai/backend/app.py",
+                    "status": "modified",
+                    "additions": 1,
+                    "deletions": 0,
+                    "patch": "@@ -0,0 +1 @@\n+print(1)",
+                }
+            ],
+        },
+        max_files=10,
+        max_patch_chars=1000,
+        source_path="crossborder-ai",
+    )
+    report = build_report(
+        changes,
+        branch="main",
+        before_sha="b" * 40,
+        after_sha="a" * 40,
+        repo_full_name="acme/demo",
+        source_path="crossborder-ai",
+    )
+    assert report["source_path"] == "crossborder-ai"
+    assert "crossborder-ai" in report["summary"]
 
 
 async def test_reconfigure_preserves_secret_and_rotation_changes_it(

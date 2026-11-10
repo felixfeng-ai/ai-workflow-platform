@@ -83,6 +83,7 @@ export function CodeAnalysisTab({
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [repoUrl, setRepoUrl] = useState(project.repo_url ?? '')
+  const [sourcePath, setSourcePath] = useState('')
   const [accessToken, setAccessToken] = useState('')
   const [patterns, setPatterns] = useState('feature/*\nfix/*')
   const [webhookSecret, setWebhookSecret] = useState('')
@@ -156,6 +157,7 @@ export function CodeAnalysisTab({
   function startEditing() {
     if (config) {
       setRepoUrl(`https://github.com/${config.repo_full_name}`)
+      setSourcePath(config.source_path ?? '')
       setPatterns(config.branch_patterns.join('\n'))
       setAccessToken('')
     }
@@ -180,6 +182,7 @@ export function CodeAnalysisTab({
     try {
       const created = await layer.configureCodeAnalysis(project.id, {
         repo_url: repoUrl.trim(),
+        source_path: sourcePath.trim() || undefined,
         access_token: accessToken.trim(),
         branch_patterns: patterns
           .split(/\n|,/)
@@ -191,6 +194,7 @@ export function CodeAnalysisTab({
       setGuideExpanded(true)
       setWebhookSecret(created.webhook_secret ?? '')
       setRepoUrl(`https://github.com/${created.repo_full_name}`)
+      setSourcePath(created.source_path ?? '')
       setPatterns(created.branch_patterns.join('\n'))
       setAccessToken('')
       setEditing(false)
@@ -321,7 +325,9 @@ export function CodeAnalysisTab({
                 <h2 className="text-[14px] font-semibold text-ink">GitHub 提交分析</h2>
                 {config ? (
                   <p className="mt-1 text-[12px] text-ink-3">
-                    {config.repo_full_name} · 默认分支 {config.default_branch} ·{' '}
+                    {config.repo_full_name}
+                    {config.source_path ? ` · 目录 ${config.source_path}` : ''} · 默认分支{' '}
+                    {config.default_branch} ·{' '}
                     {config.branch_patterns.join('、')}
                   </p>
                 ) : (
@@ -371,13 +377,24 @@ export function CodeAnalysisTab({
             {(editing || (!config && canConfigure)) && (
               <form onSubmit={saveConfig} className="mt-4 space-y-3 border-t border-line pt-4">
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="space-y-1">
+                  <label className="space-y-1 md:col-span-2">
                     <span className="text-[11.5px] text-ink-3">GitHub 仓库地址</span>
                     <Input
                       value={repoUrl}
                       onChange={(e) => setRepoUrl(e.target.value)}
                       placeholder="https://github.com/owner/repo"
                     />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11.5px] text-ink-3">代码目录（可选）</span>
+                    <Input
+                      value={sourcePath}
+                      onChange={(e) => setSourcePath(e.target.value)}
+                      placeholder="例如 crossborder-ai"
+                    />
+                    <span className="block text-[10.5px] leading-4 text-ink-5">
+                      粘贴 GitHub 目录页链接时会自动识别。
+                    </span>
                   </label>
                   <label className="space-y-1">
                     <span className="text-[11.5px] text-ink-3">Fine-grained PAT（公开仓库可留空）</span>
@@ -766,14 +783,14 @@ function WebhookSetupGuide({
       </p>
 
       <div className="divide-y divide-line border-b border-line">
-        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_64px] md:items-center">
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_120px] md:items-center">
           <span className="text-[11.5px] font-medium text-ink-3">Payload URL *</span>
           <code className="break-all text-[11.5px] text-ink-2">{webhookUrl}</code>
           <Button size="sm" variant="ghost" onClick={() => onCopy(webhookUrl, 'payload')}>
             {copyLabel('payload')}
           </Button>
         </div>
-        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_64px] md:items-center">
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_120px] md:items-center">
           <span className="text-[11.5px] font-medium text-ink-3">Content type *</span>
           <code className="text-[11.5px] text-ink-2">application/json</code>
           <Button
@@ -784,7 +801,7 @@ function WebhookSetupGuide({
             {copyLabel('content-type')}
           </Button>
         </div>
-        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_64px] md:items-center">
+        <div className="grid gap-2 px-4 py-3 md:grid-cols-[150px_1fr_120px] md:items-center">
           <span className="text-[11.5px] font-medium text-ink-3">Secret</span>
           <code className="break-all text-[11.5px] text-ink-2">
             {webhookSecret || '已隐藏，刷新后无法再次查看'}
@@ -798,7 +815,12 @@ function WebhookSetupGuide({
               {copyLabel('secret')}
             </Button>
           ) : (
-            <Button size="sm" variant="ghost" onClick={onRegenerate}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="whitespace-nowrap"
+              onClick={onRegenerate}
+            >
               重新生成 Secret
             </Button>
           )}
@@ -867,7 +889,9 @@ function RunDetail({
               {highRisks.length > 0 && <Badge tone="error">{highRisks.length} 个高风险</Badge>}
             </div>
             <p className="mt-1 text-[12px] text-ink-3">
-              {data.repo_full_name} · {data.branch} · {shortSha(data.after_sha)}
+              {data.repo_full_name}
+              {data.source_path ? ` · 目录 ${data.source_path}` : ''} · {data.branch} ·{' '}
+              {shortSha(data.after_sha)}
             </p>
           </div>
           <div className="flex items-center gap-2">

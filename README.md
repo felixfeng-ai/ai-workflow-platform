@@ -23,7 +23,7 @@
 ### 能力地图
 
 - **工作台** —— 项目看板、任务看板（待办/进行中/已完成）、Markdown 笔记
-- **代码提交分析** —— GitHub push Webhook 自动生成变更量、功能点、影响、安全扫描和测试缺口报告，支持搜索、筛选、分页和下载 DOCX
+- **代码提交分析** —— GitHub push Webhook 自动生成变更量、功能点、影响、安全扫描和测试缺口报告；支持仓库内层代码目录、搜索筛选、分页和 DOCX 下载
 - **AI 副驾** —— SSE 流式对话，可挂载项目上下文，逐字返回
 - **多智能体** —— 4 个内置智能体（周报 / 巡检报告 / 面试题 / 竞品调研）+ 自定义智能体（自写 Prompt、可挂工具）
 - **工作流编排** —— 可视化画布连线编排，支持条件分支与并行执行，失败即止、可断点续跑、运行记录可回看
@@ -98,7 +98,7 @@ backend/                 FastAPI 服务
   app/llm/               LangGraph 接缝（AiEngine→BaseChatModel 门面、SQLAlchemy Checkpointer）
   app/ai/                AI 引擎适配层（dify / openai_compatible 统一接口）
   alembic/               数据库迁移（建表的唯一来源）
-  tests/                 26 个测试文件 / 320 个用例
+  tests/                 26 个测试文件 / 327 个用例
 frontend/                React SPA
   src/pages/             页面：Dashboard / Project / Agents / Workflows / Team / Login / Knowledge ...
   src/components/        组件：Shell / KanbanBoard / AiPanel / workflow 画布 ...
@@ -321,5 +321,5 @@ flowchart TD
 ## 工程状态
 
 - 后端 117 个文件 / 8,562 行，前端 50 个文件 / 8,651 行
-- 26 个测试文件 / 320 个用例，CI 双跑：内存 SQLite 单测 + 真实 PostgreSQL 集成测试（走迁移）
+- 26 个测试文件 / 327 个用例，CI 双跑：内存 SQLite 单测 + 真实 PostgreSQL 集成测试（走迁移）
 - CI 每次推送跑后端测试与前端构建；`main` 分支自动部署生产
