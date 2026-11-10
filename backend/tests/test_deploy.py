@@ -187,6 +187,7 @@ async def test_deploy_triggers_workflow(client, auth_headers, gh):
     # workflow_dispatch 不回传 run id，此刻必须为空，等 sync 阶段认领
     assert body["github_run_id"] is None
     assert body["error"] is None
+    assert body["run_url"].endswith(f"/actions/workflows/{WORKFLOW}")
 
     assert len(gh.posted) == 1
     assert gh.posted[0]["url"] == (
@@ -243,6 +244,7 @@ async def test_sync_claims_recent_run_and_maps_conclusion(client, auth_headers, 
         "workflow_runs": [
             {
                 "id": 987654,
+                "event": "workflow_dispatch",
                 "status": "completed",
                 "conclusion": "success",
                 "html_url": "https://github.com/acme/widget/actions/runs/987654",
@@ -268,7 +270,13 @@ async def test_sync_maps_failure_conclusion(client, auth_headers, gh):
     now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     gh.runs_payload = {
         "workflow_runs": [
-            {"id": 5, "status": "completed", "conclusion": "timed_out", "created_at": now_iso}
+            {
+                "id": 5,
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "timed_out",
+                "created_at": now_iso,
+            }
         ]
     }
     body = (
@@ -302,9 +310,35 @@ async def test_sync_does_not_claim_stale_run(client, auth_headers, gh):
         "workflow_runs": [
             {
                 "id": 111,
+                "event": "workflow_dispatch",
                 "status": "completed",
                 "conclusion": "success",
                 "created_at": "2020-01-01T00:00:00Z",
+            }
+        ]
+    }
+    body = (
+        await client.get(f"/api/projects/{pid}/deployments/{run_id}", headers=auth_headers)
+    ).json()
+    assert body["github_run_id"] is None
+    assert body["status"] == "queued"
+
+
+async def test_sync_does_not_claim_recent_push_run(client, auth_headers, gh):
+    """同一 workflow 最近的 push run 不能被误认成本次手动部署。"""
+    from datetime import datetime, timezone
+
+    pid = await _project(client, auth_headers)
+    run_id = (await client.post(f"/api/projects/{pid}/deploy", headers=auth_headers)).json()["id"]
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    gh.runs_payload = {
+        "workflow_runs": [
+            {
+                "id": 333,
+                "event": "push",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": now_iso,
             }
         ]
     }
@@ -324,7 +358,15 @@ async def test_sync_skips_github_for_terminal_run(client, auth_headers, gh):
 
     now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     gh.runs_payload = {
-        "workflow_runs": [{"id": 42, "status": "completed", "conclusion": "success", "created_at": now_iso}]
+        "workflow_runs": [
+            {
+                "id": 42,
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": now_iso,
+            }
+        ]
     }
     await client.get(f"/api/projects/{pid}/deployments/{run_id}", headers=auth_headers)
     gets_after_first = len(gh.gets)
@@ -532,6 +574,27 @@ async def test_never_claimed_run_becomes_unknown_after_deadline(client, auth_hea
     # 已终态，后续查询也不回查
     r = await client.get(f"/api/projects/{pid}/deployments/{created['id']}", headers=auth_headers)
     assert r.json()["status"] == "unknown"
+    assert len(gh.gets) == gets_before
+
+
+async def test_unclaimed_run_stops_after_90_seconds(client, auth_headers, gh, db_session):
+    """GitHub 接受 dispatch 但 90 秒仍无 run，必须停止排队并提示检查 Actions。"""
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.deploy_run import DeployRun
+
+    pid = await _project(client, auth_headers)
+    created = (await client.post(f"/api/projects/{pid}/deploy", headers=auth_headers)).json()
+    run = await db_session.get(DeployRun, created["id"])
+    run.created_at = datetime.now(timezone.utc) - timedelta(seconds=91)
+    await db_session.commit()
+
+    gets_before = len(gh.gets)
+    body = (
+        await client.get(f"/api/projects/{pid}/deployments/{created['id']}", headers=auth_headers)
+    ).json()
+    assert body["status"] == "unknown"
+    assert "Actions" in body["error"]
     assert len(gh.gets) == gets_before
 
 
